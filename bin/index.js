@@ -187,9 +187,9 @@ if (isPostInstall) {
     await ensurePackageLock();
     await require('../lib/ci').ensureProjectScripts();
     await setupCIScript(projectRoot);
-    await setupCIWorkflow();
+    // await setupCIWorkflow(); // Disabled as per user preference for pre-push only
     await setupPrePushHook(gitRoot);
-    logSuccess('Pre-push hook + GitHub Actions workflow ready.');
+    logSuccess('Pre-push hook ready.');
 
   } catch (err) {
     logError(`cs-setup failed: ${err.message}`);

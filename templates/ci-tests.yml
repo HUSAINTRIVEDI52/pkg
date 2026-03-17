@@ -103,6 +103,14 @@ jobs:
         run: |
           mkdir -p newman-reports
 
+          # Case 1: Standardized script (Postman Cloud)
+          if [ "$(node -e "const p=require('./package.json'); console.log(!!p.scripts?.['test:newman'])")" = "true" ]; then
+            echo "▶️ Running standardized 'test:newman' script..."
+            npm run test:newman
+            exit $?
+          fi
+
+          # Case 2: Universal fallback (searching for collections)
           COLLECTIONS=$(find . \
             -not -path '*/node_modules/*' \
             -not -path '*/.git/*' \
@@ -140,6 +148,8 @@ jobs:
         env:
           NODE_ENV: test
           PORT: ${{ vars.PORT || 3000 }}
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          COLLECTION_UID: ${{ secrets.COLLECTION_UID }}
 
       - name: Upload Newman HTML reports
         if: always()
