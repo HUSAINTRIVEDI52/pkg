@@ -40,13 +40,13 @@ const { installHusky } = require('../lib/husky');
 const { installGitleaks } = require('../lib/gitleaks');
 const { installSonarScanner, setupSonarProperties } = require('../lib/sonarqube');
 const { setupPreCommitHook } = require('../lib/hooks');
-const { setupESLintConfig } = require('../lib/eslint');
 const { setupPrePushHook, setupCIScript,
   setupCIWorkflow, validateProject,
   ensurePackageLock } = require('../lib/ci');
 const { isGitRepo } = require('../lib/git');
 const { logInfo, logError, logSuccess } = require('../lib/logger');
 const { fixInvalidAliases } = require('../lib/fixer');
+const { setupESLintConfig } = require('../lib/eslint');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 2 — Parse command and detect context
@@ -149,6 +149,10 @@ if (isPostInstall) {
 
       await setupESLintConfig();
       await setupSonarProperties();
+      
+      // Setup CI script
+      await setupCIScript(projectRoot);
+      
       logSuccess('Git hooks and configuration verified/restored.');
       process.exit(0);
     }
@@ -178,7 +182,10 @@ if (isPostInstall) {
     await installSonarScanner();
     await installDevDependency('eslint');
     await installDevDependency('@eslint/js');
+
+    // Setup ESLint with TypeScript support
     await setupESLintConfig();
+
     await setupSonarProperties();
     await setupPreCommitHook(gitRoot);
     logSuccess('Husky + Gitleaks + SonarQube pre-commit hook ready.');
