@@ -20,7 +20,8 @@ export default [
                 module: "readonly",
                 require: "readonly",
                 console: "readonly",
-                Buffer: "readonly"
+                Buffer: "readonly",
+                exports: "readonly"
             }
         }
     }
