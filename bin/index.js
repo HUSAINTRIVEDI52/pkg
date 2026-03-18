@@ -75,7 +75,7 @@ if (isPostInstall) {
 // ─────────────────────────────────────────────────────────────────────────────
 if (isPostInstall) {
   const currentDir = path.resolve(process.cwd());
-  const projectDir = initCwd ? path.resolve(initCwd) : null;
+  let projectDir = initCwd ? path.resolve(initCwd) : null;
 
   console.log(`[cs-setup] Post-install check: currentDir=${currentDir}, projectDir=${projectDir}`);
 
