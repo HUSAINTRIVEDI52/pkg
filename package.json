@@ -1,7 +1,7 @@
 {
   "name": "cs-setup",
   "version": "1.1.0",
-  "description": "Automatic Husky + Gitleaks + SonarQube setup for any JS project",
+  "description": "Automatic Husky + Gitleaks + SonarQube setup for any JS/TS project",
   "main": "bin/index.js",
   "bin": {
     "cs-setup": "./bin/index.js"
@@ -11,7 +11,9 @@
     "gitleaks",
     "git-hooks",
     "security",
-    "sonarqube"
+    "sonarqube",
+    "typescript",
+    "eslint"
   ],
   "author": "Your Name",
   "license": "MIT",

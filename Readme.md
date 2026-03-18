@@ -9,6 +9,8 @@ Automatically installs and configures:
 - Husky (Git hooks)
 - Gitleaks (Secret scanning)
 - Pre-commit protection
+- ESLint for JavaScript and TypeScript
+- TypeScript support (auto-detected)
 
 ---
 
@@ -37,14 +39,20 @@ This will:
 - Install Husky locally
 - Download Gitleaks locally
 - Configure the pre-commit hook
+- Set up ESLint for JavaScript files
+- Auto-detect TypeScript and configure ESLint for TypeScript files
 
 ---
 
 ## Done
 
-Now every `git commit` will automatically scan for secrets.
+Now every `git commit` will automatically:
+
+- Scan for secrets with Gitleaks
+- Run ESLint on JavaScript and TypeScript files
 
 If secrets are detected, the commit will be blocked.
+ESLint warnings will be shown but won't block the commit.
 
 ---
 
