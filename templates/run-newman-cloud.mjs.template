@@ -1,8 +1,8 @@
+// templates/run-newman-cloud.mjs.template
 import newman from 'newman';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import https from 'https';
 
 dotenv.config();
 
