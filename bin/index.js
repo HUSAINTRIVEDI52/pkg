@@ -192,8 +192,9 @@ if (isPostInstall) {
     logInfo('Edit sonar-project.properties — set sonar.host.url and sonar.token.');
 
     await ensurePackageLock();
-    await require('../lib/ci').ensureProjectScripts();
     await setupCIScript(projectRoot);
+    await require('../lib/ci').ensureProjectScripts();
+    
     // await setupCIWorkflow(); // Disabled as per user preference for pre-push only
     await setupPrePushHook(gitRoot);
     logSuccess('Pre-push hook ready.');
