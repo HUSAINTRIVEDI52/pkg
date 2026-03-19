@@ -72,7 +72,7 @@ HAS_START=$(node -e "try{const p=require('./package.json');console.log(p.scripts
 HAS_DEV=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.dev?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
 # ---------------------------------------------------------------
-# COMPULSORY: Smoke tests (Vitest/etc)
+# COMPULSORY: Smoke tests (Jest/Vitest/etc) — no server needed
 # ---------------------------------------------------------------
 
 echo ""
@@ -80,7 +80,6 @@ echo "=================================================="
 echo "🔥 [Smoke Tests] Running Smoke Tests..."
 echo "=================================================="
 
-# Detect if test:smoke exists
 HAS_SMOKE=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:smoke']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
 if [ "$HAS_SMOKE" = "yes" ]; then
@@ -90,15 +89,82 @@ if [ "$HAS_SMOKE" = "yes" ]; then
     exit 1
   fi
 else
-  # Fallback to universal startup check (existing logic but scoped to smoke job)
-  echo "[Smoke Tests] No 'test:smoke' script found — running universal startup check."
-  # ... existing logic for startup check could go here, but for now we keep it simple or use standardized script
+  echo "[Smoke Tests] No 'test:smoke' script found — skipping."
 fi
 
 echo "✅ [Smoke Tests] Passed ✔"
 
 # ---------------------------------------------------------------
-# COMPULSORY: Newman API Tests (Cloud)
+# Start server ONCE — used by both Newman flows below
+# ---------------------------------------------------------------
+
+SERVER_PID=""
+PORT=""
+
+START_CMD=""
+if [ "$HAS_START" = "yes" ]; then
+  START_CMD="npm start"
+elif [ "$HAS_DEV" = "yes" ]; then
+  START_CMD="npm run dev"
+fi
+
+if [ -n "$START_CMD" ]; then
+  echo ""
+  echo "[Server] Starting server with: $START_CMD"
+
+  sh -c "$START_CMD" > /tmp/ci-server.log 2>&1 &
+  SERVER_PID=$!
+
+  # Detect port
+  DETECTED_PORT=""
+
+  if [ -f ".env" ]; then
+    DETECTED_PORT=$(grep -E "^PORT=" .env 2>/dev/null | cut -d= -f2 | tr -d "\t\r\n ")
+  fi
+
+  if [ -z "$DETECTED_PORT" ]; then
+    DETECTED_PORT=$(node -e 'try{const p=require("./package.json");const s=JSON.stringify(p.scripts||{});const m=s.match(/PORT=([0-9]+)/);if(m)process.stdout.write(m[1])}catch(e){}' 2>/dev/null)
+  fi
+
+  if [ -z "$DETECTED_PORT" ]; then
+    DETECTED_PORT=$(grep -rE "\.listen\([0-9]" --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-dir=.git . 2>/dev/null | grep -oE "[0-9]{4,5}" | head -1)
+  fi
+
+  if [ -n "$DETECTED_PORT" ]; then
+    PORT_LIST="$DETECTED_PORT 3000 3001 4000 8000 8080"
+  else
+    PORT_LIST="3000 3001 4000 8000 8080"
+  fi
+
+  echo "[Server] Waiting for server to be ready..."
+  SERVER_UP=0
+  for i in $(seq 1 30); do
+    if ! kill -0 $SERVER_PID 2>/dev/null; then
+      echo "⚠️  [Server] Process exited early. Check your start script."
+      break
+    fi
+    for PORT_TRY in $PORT_LIST; do
+      if curl -sf http://localhost:$PORT_TRY >/dev/null 2>&1; then
+        PORT=$PORT_TRY
+        SERVER_UP=1
+        echo "✅ [Server] Running on port $PORT"
+        break 2
+      fi
+    done
+    sleep 1
+  done
+
+  if [ $SERVER_UP -eq 0 ]; then
+    echo "⚠️  [Server] Did not start within 30s — Newman tests may fail."
+  fi
+else
+  echo "⚠️  [Server] No start/dev script found — Newman tests will run without a live server."
+fi
+
+# ---------------------------------------------------------------
+# COMPULSORY: Newman API Tests
+# Runs EITHER the cloud runner (test:newman) OR local collections
+# Server is already up above — used by both
 # ---------------------------------------------------------------
 
 echo ""
@@ -106,34 +172,52 @@ echo "=================================================="
 echo "🧪 [Newman] Running API Tests..."
 echo "=================================================="
 
-# Detect if test:newman exists
 HAS_NEWMAN_SCRIPT=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:newman']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
 if [ "$HAS_NEWMAN_SCRIPT" = "yes" ]; then
   echo "[Newman] Running standardized 'test:newman' script..."
   if ! npm run test:newman; then
     echo "✖ [Newman] API tests failed. Push blocked."
+    if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
     exit 1
   fi
 else
-  # Fallback to searching for collections
-  echo "[Newman] No 'test:newman' script found — searching for collections."
+  # Fallback: run local .postman_collection.json files directly
+  echo "[Newman] No 'test:newman' script found — searching for local collections..."
   COLLECTIONS=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" -name "*.postman_collection.json" 2>/dev/null)
-  
+
   if [ -n "$COLLECTIONS" ]; then
     if ! command -v newman >/dev/null 2>&1; then
+      echo "[Newman] Installing newman..."
       npm install -g newman newman-reporter-htmlextra >/dev/null 2>&1 || true
     fi
+
     mkdir -p newman-reports
     ENV_FILE=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" -name "*.postman_environment.json" 2>/dev/null | head -1)
     NEWMAN_FAIL=0
+
     for COLLECTION in $COLLECTIONS; do
       NAME=$(basename "$COLLECTION" .json)
-      newman run "$COLLECTION" ${ENV_FILE:+"--environment $ENV_FILE"} --reporters cli,htmlextra --reporter-htmlextra-export "newman-reports/${NAME}-report.html" --bail
+      echo "[Newman] Running: $COLLECTION"
+
+      ENV_FLAG=""
+      if [ -n "$ENV_FILE" ]; then
+        ENV_FLAG="--environment $ENV_FILE"
+      fi
+
+      newman run "$COLLECTION" \
+        $ENV_FLAG \
+        --env-var "baseUrl=http://localhost:${PORT:-3000}" \
+        --reporters cli,htmlextra \
+        --reporter-htmlextra-export "newman-reports/${NAME}-report.html" \
+        --bail
+
       if [ $? -ne 0 ]; then NEWMAN_FAIL=1; fi
     done
+
     if [ $NEWMAN_FAIL -ne 0 ]; then
       echo "✖ [Newman] API tests failed. Push blocked."
+      if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
       exit 1
     fi
   else
@@ -144,11 +228,12 @@ fi
 echo "✅ [Newman] All tests completed ✔"
 
 # ---------------------------------------------------------------
-# Cleanup
+# Cleanup — kill server
 # ---------------------------------------------------------------
 
 if [ -n "$SERVER_PID" ]; then
   kill $SERVER_PID 2>/dev/null
+  echo "[Server] Stopped."
 fi
 
 echo ""
