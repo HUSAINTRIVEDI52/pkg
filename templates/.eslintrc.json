@@ -31,5 +31,16 @@
       "argsIgnorePattern": "^_"
     }],
     "no-undef": "error"
-  }
+  },
+    "overrides": [
+    {
+      "files": [
+        "*.mjs"
+      ],
+      "parserOptions": {
+        "sourceType": "module",
+        "ecmaVersion": "latest"
+      }
+    }
+  ]
 }
