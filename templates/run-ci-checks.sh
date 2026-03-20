@@ -81,7 +81,6 @@ echo "🔥 [Smoke Tests] Running Smoke Tests..."
 echo "=================================================="
 
 HAS_SMOKE=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:smoke']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
-
 if [ "$HAS_SMOKE" = "yes" ]; then
   echo "[Smoke Tests] Running standardized 'test:smoke' script..."
   if ! npm run test:smoke; then
@@ -89,7 +88,11 @@ if [ "$HAS_SMOKE" = "yes" ]; then
     exit 1
   fi
 else
-  echo "[Smoke Tests] No 'test:smoke' script found — skipping."
+  # No test:smoke — try generating coverage directly if jest exists
+  if [ -f "./node_modules/.bin/jest" ]; then
+    echo "[Smoke Tests] Generating coverage report..."
+    ./node_modules/.bin/jest --coverage --coverageReporters=lcov text 2>/dev/null || true
+  fi
 fi
 
 echo "✅ [Smoke Tests] Passed ✔"
