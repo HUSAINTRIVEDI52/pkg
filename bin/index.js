@@ -121,7 +121,7 @@ if (isPostInstall) {
     const targetTool = process.argv[3]; // e.g. 'gitleaks'
 
     if (command === 'install' && targetTool === 'gitleaks') {
-      await installGitleaks();
+      await installGitleaks(gitRoot);
       process.exit(0);
     }
 
@@ -178,7 +178,7 @@ if (isPostInstall) {
 
     const { installDevDependency } = require('../lib/packageManager');
     await installHusky(gitRoot);
-    await installGitleaks();
+    await installGitleaks(gitRoot);
     await installSonarScanner();
     await installDevDependency('eslint');
     await installDevDependency('@eslint/js');
