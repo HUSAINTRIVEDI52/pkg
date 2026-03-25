@@ -32,11 +32,21 @@ const jsConfig = {
     ...js.configs.recommended,
     rules: {
         ...js.configs.recommended.rules,
+        // Console rules
+        "no-console": "warn",
+        // Variable declaration rules
+        "no-undef": "error",
         "no-unused-vars": ["warn", {
             "varsIgnorePattern": "^React$",
             "argsIgnorePattern": "^_"
         }],
-        "no-undef": "error",
+        "prefer-const": "error",
+        // Comparison rules
+        "eqeqeq": "error",
+        // Style rules
+        "indent": ["error", 2],
+        "quotes": ["error", "single"],
+        "semi": ["error", "always"],
     },
     languageOptions: {
         ecmaVersion: "latest",
@@ -59,11 +69,22 @@ const tsConfig = (tseslint && tsparser) ? {
     },
     rules: {
         ...tseslint.configs.recommended.rules,
+        // Console rules
+        "no-console": "warn",
+        // Variable declaration rules
         "no-unused-vars": "off",
         "@typescript-eslint/no-unused-vars": ["warn", {
             "varsIgnorePattern": "^React$",
             "argsIgnorePattern": "^_"
         }],
+        "@typescript-eslint/no-undef": "error",
+        "prefer-const": "error",
+        // Comparison rules
+        "eqeqeq": "error",
+        // Style rules
+        "indent": ["error", 2],
+        "quotes": ["error", "single"],
+        "semi": ["error", "always"],
     },
 } : null;
 
