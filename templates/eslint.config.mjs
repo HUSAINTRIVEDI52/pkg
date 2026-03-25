@@ -77,7 +77,7 @@ const tsConfig = (tseslint && tsparser) ? {
             "varsIgnorePattern": "^React$",
             "argsIgnorePattern": "^_"
         }],
-        "@typescript-eslint/no-undef": "error",
+        // Note: no-undef is handled by TypeScript parser for TS files
         "prefer-const": "error",
         // Comparison rules
         "eqeqeq": "error",
