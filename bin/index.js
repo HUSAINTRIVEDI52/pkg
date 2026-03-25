@@ -36,8 +36,6 @@ if (!fs.existsSync(SENTINEL)) {
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('[cs-setup] Script starting...');
 
-const fs = require('fs');
-const path = require('path');
 const { installHusky } = require('../lib/husky');
 const { installGitleaks } = require('../lib/gitleaks');
 const { installSonarScanner, setupSonarProperties } = require('../lib/sonarqube');
