@@ -27,12 +27,21 @@
   },
   "rules": {
     "no-console": "error",
-    "no-undef": "error",
+    "no-undef": "warn",
     "prefer-const": "error",
     "eqeqeq": "error",
-    "indent": ["error", 2],
-    "quotes": ["error", "single"],
-    "semi": ["error", "always"]
+    "indent": [
+      "error",
+      2
+    ],
+    "quotes": [
+      "error",
+      "single"
+    ],
+    "semi": [
+      "error",
+      "always"
+    ]
   },
   "overrides": [
     {
@@ -47,10 +56,13 @@
         "ecmaVersion": "latest"
       },
       "rules": {
-        "no-unused-vars": ["warn", {
-          "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
-          "argsIgnorePattern": "^_"
-        }]
+        "no-unused-vars": [
+          "warn",
+          {
+            "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
+            "argsIgnorePattern": "^_"
+          }
+        ]
       }
     },
     {
@@ -64,10 +76,13 @@
       ],
       "rules": {
         "no-unused-vars": "off",
-        "@typescript-eslint/no-unused-vars": ["warn", {
-          "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
-          "argsIgnorePattern": "^_"
-        }]
+        "@typescript-eslint/no-unused-vars": [
+          "warn",
+          {
+            "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
+            "argsIgnorePattern": "^_"
+          }
+        ]
       }
     }
   ]

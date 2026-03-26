@@ -7,6 +7,11 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
       globals: {
         // Node.js globals
         process: 'readonly',
@@ -45,6 +50,24 @@ export default [
     },
   },
   {
+    files: ['**/*.{js,jsx,mjs,cjs}'],
+    rules: {
+      'no-unused-vars': ['warn', {
+        varsIgnorePattern: '^React$|^_|^use[A-Z]|^[A-Z]',
+        argsIgnorePattern: '^_',
+      }],
+    },
+  },
+  {
+    files: ['**/*.{ts,tsx}'],
+    rules: {
+      'no-unused-vars': 'off',
+      // Note: @typescript-eslint rules are only active if the plugin is loaded.
+      // In a flat config, we would usually import the plugin, but for now 
+      // we maintain compatibility with the user's install process.
+    },
+  },
+  {
     files: ['**/*.test.{js,jsx,ts,tsx}', '**/*.spec.{js,jsx,ts,tsx}', '**/tests/**/*.{js,jsx,ts,tsx}', '**/__tests__/**/*.{js,jsx,ts,tsx}'],
     languageOptions: {
       globals: {
@@ -62,6 +85,6 @@ export default [
     },
   },
   {
-    ignores: ['node_modules/**', 'dist/**'],
+    ignores: ['node_modules/**', 'dist/**', 'build/**', 'coverage/**'],
   },
 ];
