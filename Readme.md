@@ -1,4 +1,4 @@
-# cs-setup (Central Pipeline Checks)
+# cs-setup
 
 A robust, zero-config CLI package that automatically secures and standardizes your projects. By simply installing this package, it automatically configures **Husky**, **Gitleaks**, **ESLint**, **SonarQube**, **Smoke Testing**, and **Newman API Testing** natively hooked into your Git workflow.
 
