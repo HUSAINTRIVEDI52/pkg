@@ -26,27 +26,48 @@
     "exports": "readonly"
   },
   "rules": {
-    "no-console": "warn",
+    "no-console": "error",
     "no-undef": "error",
-    "no-unused-vars": "off",
-    "@typescript-eslint/no-unused-vars": ["warn", {
-      "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
-      "argsIgnorePattern": "^_"
-    }],
     "prefer-const": "error",
     "eqeqeq": "error",
     "indent": ["error", 2],
     "quotes": ["error", "single"],
     "semi": ["error", "always"]
   },
-    "overrides": [
+  "overrides": [
     {
       "files": [
-        "*.mjs"
+        "*.js",
+        "*.jsx",
+        "*.mjs",
+        "*.cjs"
       ],
       "parserOptions": {
         "sourceType": "module",
         "ecmaVersion": "latest"
+      },
+      "rules": {
+        "no-unused-vars": ["warn", {
+          "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
+          "argsIgnorePattern": "^_"
+        }]
+      }
+    },
+    {
+      "files": [
+        "*.ts",
+        "*.tsx"
+      ],
+      "parser": "@typescript-eslint/parser",
+      "plugins": [
+        "@typescript-eslint"
+      ],
+      "rules": {
+        "no-unused-vars": "off",
+        "@typescript-eslint/no-unused-vars": ["warn", {
+          "varsIgnorePattern": "^React$|^_|^use[A-Z]|^[A-Z]",
+          "argsIgnorePattern": "^_"
+        }]
       }
     }
   ]
