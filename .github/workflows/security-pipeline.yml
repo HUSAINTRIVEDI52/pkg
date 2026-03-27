@@ -1,0 +1,178 @@
+name: Security Scanning Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+  pull_request:
+    branches:
+      - main
+      - develop
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+
+  # ── JOB 1: PREPARE ──────────────────────────────────────────────────────────
+  prepare:
+    name: "Prepare"
+    runs-on: self-hosted
+    outputs:
+      short_sha:   ${{ steps.meta.outputs.short_sha }}
+      run_date:    ${{ steps.meta.outputs.run_date }}
+      report_name: ${{ steps.meta.outputs.report_name }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set metadata
+        id: meta
+        run: |
+          SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-8)
+          RUN_DATE=$(date +%Y-%m-%d)
+          BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
+          echo "short_sha=${SHORT_SHA}"    >> $GITHUB_OUTPUT
+          echo "run_date=${RUN_DATE}"      >> $GITHUB_OUTPUT
+          echo "report_name=security-report-${BRANCH}-${SHORT_SHA}-${RUN_DATE}" >> $GITHUB_OUTPUT
+
+      - name: Check and install Docker if missing
+        run: |
+          if command -v docker &>/dev/null; then
+            echo "✓ Docker: $(docker --version)"
+          else
+            echo "Installing Docker..."
+            sudo apt-get update -qq
+            sudo apt-get install -y docker.io
+            sudo usermod -aG docker $USER
+            sudo systemctl start docker
+            echo "✓ Docker installed"
+          fi
+          docker ps 2>/dev/null || sudo docker ps
+
+      - name: Check and install Node.js if missing
+        run: |
+          export PATH="/usr/local/bin:/usr/bin:$PATH"
+          if command -v node &>/dev/null; then
+            echo "✓ Node.js: $(node --version)"
+          else
+            echo "Installing Node.js..."
+            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+            echo "✓ Node.js: $(node --version)"
+          fi
+
+      - name: Create workspace and fix permissions
+        run: |
+          mkdir -p ~/security-scan/reports
+          mkdir -p ~/security-scan/app
+          mkdir -p ~/security-scan/scripts
+          mkdir -p ~/.dependency-check/data
+          chmod -R 777 ~/security-scan/reports
+          # NVD cache may be owned by root from previous dep-check container run
+          # Fix ownership first, then set permissions
+          sudo chown -R "$(whoami)":"$(whoami)" ~/.dependency-check/data 2>/dev/null || true
+          chmod -R 777 ~/.dependency-check/data 2>/dev/null || true
+          echo "✓ Workspace ready"
+
+  # ── JOB 2: RUN SCANS ────────────────────────────────────────────────────────
+  run-scans:
+    name: "Run Scans on GCP VM"
+    runs-on: self-hosted
+    needs: prepare
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Copy code and script to workspace
+        run: |
+          mkdir -p ~/security-scan/app
+          mkdir -p ~/security-scan/scripts
+          cp -r . ~/security-scan/app/
+          cp .github/scripts/run-all-scans.sh \
+             ~/security-scan/scripts/run-all-scans.sh
+          chmod +x ~/security-scan/scripts/run-all-scans.sh
+          echo "✓ Ready"
+
+      - name: Run security scans
+        env:
+          GIT_SHA:                  ${{ github.sha }}
+          GIT_BRANCH:               ${{ github.ref_name }}
+          RUN_DATE:                 ${{ needs.prepare.outputs.run_date }}
+          SONAR_HOST_URL:           ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN:              ${{ secrets.SONAR_TOKEN }}
+          SONAR_PROJECT_KEY:        ${{ secrets.SONAR_PROJECT_KEY }}
+          NVD_API_KEY:              ${{ secrets.NVD_API_KEY }}
+          DEFECTDOJO_URL:           ${{ secrets.DEFECTDOJO_URL }}
+          DEFECTDOJO_API_KEY:       ${{ secrets.DEFECTDOJO_API_KEY }}
+          DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
+          DEFECTDOJO_PRODUCT_ID:    ${{ secrets.DEFECTDOJO_PRODUCT_ID }}
+        run: |
+          export PATH="/usr/local/bin:/usr/bin:$PATH"
+          bash ~/security-scan/scripts/run-all-scans.sh
+        timeout-minutes: 75
+
+  # ── JOB 3: UPLOAD ARTIFACT ──────────────────────────────────────────────────
+  collect-report:
+    name: "Upload Report as GitHub Artifact"
+    runs-on: self-hosted
+    needs: [prepare, run-scans]
+    if: always() && needs.run-scans.result != 'cancelled'
+
+    steps:
+      - name: Find and rename report
+        id: find
+        run: |
+          REPORT=$(ls ~/security-scan/reports/final-report.* 2>/dev/null | head -1)
+          if [ -n "${REPORT}" ]; then
+            EXT="${REPORT##*.}"
+            DEST=~/security-scan/reports/${{ needs.prepare.outputs.report_name }}.${EXT}
+            cp "${REPORT}" "${DEST}"
+            echo "report_file=${{ needs.prepare.outputs.report_name }}.${EXT}" >> $GITHUB_OUTPUT
+            echo "✓ Report ready: ${DEST}"
+          else
+            echo "No final report found — uploading all raw reports"
+          fi
+
+      - name: Upload as GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.prepare.outputs.report_name }}
+          path: ~/security-scan/reports/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Write job summary
+        run: |
+          echo "## Security Scan Report" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Commit | \`${{ needs.prepare.outputs.short_sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Date | ${{ needs.prepare.outputs.run_date }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Scans | SonarQube SAST + Dependency-Check SCA |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner | GCP VM self-hosted |" >> $GITHUB_STEP_SUMMARY
+          echo "| Report | \`${{ steps.find.outputs.report_file }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Download the report from the Artifacts section above." >> $GITHUB_STEP_SUMMARY
+
+  # ── JOB 4: CLEANUP ──────────────────────────────────────────────────────────
+  cleanup:
+    name: "Cleanup"
+    runs-on: self-hosted
+    needs: collect-report
+    if: always()
+
+    steps:
+      - name: Remove containers and workspace
+        run: |
+          docker rm -f dep-check 2>/dev/null || true
+          rm -rf ~/security-scan/app/
+          echo "✓ Cleanup done"
