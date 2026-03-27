@@ -196,7 +196,7 @@ if (isPostInstall) {
     await setupCIScript(projectRoot);
     await require('../lib/ci').ensureProjectScripts();
     
-    // await setupCIWorkflow(); // Disabled as per user preference for pre-push only
+    await setupCIWorkflow();
     await setupPrePushHook(gitRoot);
     logSuccess('Pre-push hook ready.');
 
