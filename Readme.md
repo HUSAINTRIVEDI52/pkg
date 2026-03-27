@@ -26,7 +26,7 @@ To install and initialize the setup in your project, simply add it as a `devDepe
 ```json
 {
   "devDependencies": {
-    "cs-setup": "github:HUSAINTRIVEDI52/pkg"
+    "cs-setup": "github:HUSAINTRIVEDI52/pkg#m-main"
   }
 }
 ```
