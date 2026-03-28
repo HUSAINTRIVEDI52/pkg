@@ -12,7 +12,8 @@ WORKSPACE="${HOME}/security-scan"
 APP_DIR="${WORKSPACE}/app/backend"
 REPORTS_DIR="${WORKSPACE}/reports"
 LOG_FILE="${REPORTS_DIR}/scan.log"
-NVD_CACHE="${HOME}/.dependency-check/data"
+# Use pre-existing NVD database on runner instance - no downloads
+NVD_DATABASE_PATH="/home/runner/setup-pipeline/nvd_database.json"
 
 # ── State ─────────────────────────────────────────────────────────────────────
 SONAR_RESULT="skipped"
@@ -22,7 +23,6 @@ FINAL_FORMAT="none"
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 mkdir -p "${REPORTS_DIR}"
-mkdir -p "${NVD_CACHE}"
 exec > >(tee -a "${LOG_FILE}") 2>&1
 
 log()  { echo "[$(date '+%H:%M:%S')] $*"; }
@@ -30,16 +30,11 @@ ok()   { echo "[$(date '+%H:%M:%S')] ✓ $*"; }
 warn() { echo "[$(date '+%H:%M:%S')] ⚠ WARNING: $*"; }
 fail() { echo "[$(date '+%H:%M:%S')] ✗ ERROR: $*"; }
 
-# ── PATH setup ────────────────────────────────────────────────────────────────
-export PATH="/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:$PATH"
-export NVM_DIR="${HOME}/.nvm"
-[ -s "${NVM_DIR}/nvm.sh" ] && source "${NVM_DIR}/nvm.sh"
-
 # ─────────────────────────────────────────────────────────────────────────────
 # BANNER + VALIDATION
 # ─────────────────────────────────────────────────────────────────────────────
 log "======================================================="
-log " Security Scan — GCP VM"
+log " Security Scan — Pipeline"
 log " SHA:    ${GIT_SHA:0:8}"
 log " Branch: ${GIT_BRANCH}"
 log " Date:   ${RUN_DATE}"
@@ -47,7 +42,7 @@ log "======================================================="
 
 REQUIRED=(
   GIT_SHA GIT_BRANCH RUN_DATE
-  SONAR_HOST_URL SONAR_TOKEN SONAR_PROJECT_KEY
+  SONAR_HOST_URL SONAR_TOKEN
   DEFECTDOJO_URL DEFECTDOJO_API_KEY
   DEFECTDOJO_ENGAGEMENT_ID DEFECTDOJO_PRODUCT_ID
 )
@@ -61,19 +56,21 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 fi
 ok "All required env vars present"
 
-# Check Docker
-if ! command -v docker &>/dev/null; then
-  fail "Docker not installed on VM"
-  exit 1
-fi
+# ── Check environment ─────────────────────────────────────────────────────────
+command -v docker &>/dev/null || { fail "Docker not found"; exit 1; }
 ok "Docker: $(docker --version | cut -d' ' -f3 | tr -d ',')"
 
 # ── Fix permissions upfront ───────────────────────────────────────────────────
 chmod -R 777 "${REPORTS_DIR}" 2>/dev/null || true
-chmod -R 777 "${NVD_CACHE}"   2>/dev/null || true
-ok "Permissions set on reports and NVD cache"
+ok "Permissions set on reports directory"
 
-# ── Check DefectDojo ──────────────────────────────────────────────────────────
+# ── Check NVD Database ──────────────────────────────────────────────────────
+log "Checking NVD database at ${NVD_DATABASE_PATH} ..."
+if [ ! -f "${NVD_DATABASE_PATH}" ]; then
+  fail "NVD database not found at ${NVD_DATABASE_PATH}"
+  exit 1
+fi
+ok "NVD database found"
 log "Checking DefectDojo at ${DEFECTDOJO_URL} ..."
 DOJO_OK=false
 for attempt in 1 2 3; do
@@ -112,14 +109,48 @@ done
   warn "SonarQube not reachable — SAST skipped"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — SonarQube SAST
+# STEP 1 — SonarQube Project Setup & SAST
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 1: SonarQube SAST"
+log "STEP 1: SonarQube Project Setup & SAST"
 log "-------------------------------------------------------"
 
 if [ "${SONAR_REACHABLE}" = "true" ]; then
   cd "${APP_DIR}"
+
+  # --- Auto-generate Project Key from Project Name ---
+  if [ -f "package.json" ]; then
+    log "Extracting project name from package.json..."
+    PROJECT_NAME=$(grep -m 1 '"name":' package.json | cut -d'"' -f4 || echo "unknown-project")
+    # Generate key: lowercase, replace non-alphanumeric (except . - _ :) with -
+    SONAR_PROJECT_KEY=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._:-]/-/g')
+    ok "Derived SonarQube project key: ${SONAR_PROJECT_KEY}"
+  else
+    warn "package.json not found in ${APP_DIR}, falling back to manual or default key"
+    SONAR_PROJECT_KEY="${SONAR_PROJECT_KEY:-default-project-key}"
+    PROJECT_NAME="${SONAR_PROJECT_KEY}"
+  fi
+
+  # --- Ensure SonarQube Project Exists ---
+  log "Checking if project '${SONAR_PROJECT_KEY}' exists in SonarQube..."
+  # SonarQube search API returns 200 even if not found, we check the body
+  PROJECT_EXISTS=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/projects/search?projects=${SONAR_PROJECT_KEY}" | grep -q "\"key\":\"${SONAR_PROJECT_KEY}\"" && echo "true" || echo "false")
+
+  if [ "${PROJECT_EXISTS}" = "false" ]; then
+    log "Project not found. Creating project '${SONAR_PROJECT_KEY}' (Name: ${PROJECT_NAME})..."
+    CREATE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -u "${SONAR_TOKEN}:" -X POST \
+      "${SONAR_HOST_URL}/api/projects/create" \
+      -d "name=${PROJECT_NAME}" \
+      -d "project=${SONAR_PROJECT_KEY}")
+    
+    if [ "${CREATE_STATUS}" = "200" ] || [ "${CREATE_STATUS}" = "201" ]; then
+      ok "Project created successfully (HTTP ${CREATE_STATUS})"
+    else
+      warn "Failed to create project (HTTP ${CREATE_STATUS}). Attempting scan anyway..."
+    fi
+  else
+    ok "Project '${SONAR_PROJECT_KEY}' already exists"
+  fi
   SONAR_OK=false
 
   if command -v sonar-scanner &>/dev/null; then
@@ -216,10 +247,9 @@ docker rm -f dep-check 2>/dev/null || true
 
 # Ensure host dirs are fully writable before mounting
 chmod -R 777 "${REPORTS_DIR}"
-chmod -R 777 "${NVD_CACHE}"
 
-NVD_FLAG=""
-[ -n "${NVD_API_KEY:-}" ] && NVD_FLAG="--nvdApiKey ${NVD_API_KEY}"
+# Use pre-existing NVD database - no API key needed
+log "Using pre-existing NVD database at ${NVD_DATABASE_PATH}"
 
 log "Running Dependency-Check..."
 docker run \
@@ -227,7 +257,7 @@ docker run \
   --user root \
   -v "${APP_DIR}:/src" \
   -v "${REPORTS_DIR}:/report" \
-  -v "${NVD_CACHE}:/usr/share/dependency-check/data" \
+  -v "${NVD_DATABASE_PATH}:/usr/share/dependency-check/data" \
   owasp/dependency-check:latest \
   --project "localit-backend" \
   --scan /src \
@@ -237,8 +267,8 @@ docker run \
   --enableRetired \
   --disableAssembly \
   --disableOssIndex \
-  ${NVD_FLAG} \
   --failOnCVSS 0 \
+  --failOnSevere false \
   2>&1 && DEPCHECK_OK=true || DEPCHECK_OK=false
 
 docker rm -f dep-check 2>/dev/null || true

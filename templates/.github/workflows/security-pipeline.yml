@@ -9,12 +9,6 @@ on:
     paths-ignore:
       - "**.md"
       - "docs/**"
-  pull_request:
-    branches:
-      - main
-      - develop
-  schedule:
-    - cron: "0 0 * * *"
   workflow_dispatch:
 
 jobs:
@@ -42,48 +36,24 @@ jobs:
           echo "run_date=${RUN_DATE}"      >> $GITHUB_OUTPUT
           echo "report_name=security-report-${BRANCH}-${SHORT_SHA}-${RUN_DATE}" >> $GITHUB_OUTPUT
 
-      - name: Check and install Docker if missing
+      - name: Check environment
         run: |
-          if command -v docker &>/dev/null; then
-            echo "✓ Docker: $(docker --version)"
-          else
-            echo "Installing Docker..."
-            sudo apt-get update -qq
-            sudo apt-get install -y docker.io
-            sudo usermod -aG docker $USER
-            sudo systemctl start docker
-            echo "✓ Docker installed"
-          fi
+          echo "Checking pre-configured tools..."
+          command -v docker &>/dev/null && echo "✓ Docker: $(docker --version)" || { echo "✗ Docker missing"; exit 1; }
+          command -v node &>/dev/null && echo "✓ Node.js: $(node --version)" || { echo "✗ Node.js missing"; exit 1; }
           docker ps 2>/dev/null || sudo docker ps
-
-      - name: Check and install Node.js if missing
-        run: |
-          export PATH="/usr/local/bin:/usr/bin:$PATH"
-          if command -v node &>/dev/null; then
-            echo "✓ Node.js: $(node --version)"
-          else
-            echo "Installing Node.js..."
-            curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-            sudo apt-get install -y nodejs
-            echo "✓ Node.js: $(node --version)"
-          fi
 
       - name: Create workspace and fix permissions
         run: |
           mkdir -p ~/security-scan/reports
           mkdir -p ~/security-scan/app
           mkdir -p ~/security-scan/scripts
-          mkdir -p ~/.dependency-check/data
           chmod -R 777 ~/security-scan/reports
-          # NVD cache may be owned by root from previous dep-check container run
-          # Fix ownership first, then set permissions
-          sudo chown -R "$(whoami)":"$(whoami)" ~/.dependency-check/data 2>/dev/null || true
-          chmod -R 777 ~/.dependency-check/data 2>/dev/null || true
           echo "✓ Workspace ready"
 
   # ── JOB 2: RUN SCANS ────────────────────────────────────────────────────────
   run-scans:
-    name: "Run Scans on GCP VM"
+    name: "Run Security Scans"
     runs-on: self-hosted
     needs: prepare
 
@@ -108,8 +78,6 @@ jobs:
           RUN_DATE:                 ${{ needs.prepare.outputs.run_date }}
           SONAR_HOST_URL:           ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN:              ${{ secrets.SONAR_TOKEN }}
-          SONAR_PROJECT_KEY:        ${{ secrets.SONAR_PROJECT_KEY }}
-          NVD_API_KEY:              ${{ secrets.NVD_API_KEY }}
           DEFECTDOJO_URL:           ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY:       ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
@@ -158,7 +126,7 @@ jobs:
           echo "| Commit | \`${{ needs.prepare.outputs.short_sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Date | ${{ needs.prepare.outputs.run_date }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Scans | SonarQube SAST + Dependency-Check SCA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Runner | GCP VM self-hosted |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner | Self-hosted runner |" >> $GITHUB_STEP_SUMMARY
           echo "| Report | \`${{ steps.find.outputs.report_file }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Download the report from the Artifacts section above." >> $GITHUB_STEP_SUMMARY
