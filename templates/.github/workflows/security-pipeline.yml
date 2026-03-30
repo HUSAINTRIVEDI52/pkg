@@ -129,7 +129,7 @@ jobs:
           echo "| Runner | Self-hosted runner |" >> $GITHUB_STEP_SUMMARY
           echo "| Report | \`${{ steps.find.outputs.report_file }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the report from the Artifacts section above." >> $GITHUB_STEP_SUMMARY
+          echo "Download the report from the Artifacts section above..." >> $GITHUB_STEP_SUMMARY
 
   # ── JOB 4: CLEANUP ──────────────────────────────────────────────────────────
   cleanup:
