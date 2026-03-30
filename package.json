@@ -23,6 +23,7 @@
     "test": "npx --no-install cs-setup check-hooks 2>/dev/null || true && node --test"
   },
   "dependencies": {
+    "@eslint/js": "^8.0.0 || ^9.0.0 || ^10.0.0",
     "chalk": "^4.1.2",
     "dotenv": "^17.3.1",
     "execa": "^5.1.1",
@@ -30,7 +31,22 @@
     "husky": "^9.0.11",
     "newman": "^6.2.1",
     "newman-reporter-htmlextra": "^1.23.1",
-    "sonarqube-scanner": "^4.0.0"
+    "sonarqube-scanner": "^4.0.0",
+    "eslint": "^8.0.0 || ^9.0.0 || ^10.0.0"
+  },
+  "peerDependencies": {
+    "@eslint/js": "^8.0.0 || ^9.0.0 || ^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^5.0.0 || ^6.0.0 || ^7.0.0",
+    "@typescript-eslint/parser": "^5.0.0 || ^6.0.0 || ^7.0.0",
+    "eslint": "^8.0.0 || ^9.0.0 || ^10.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@typescript-eslint/eslint-plugin": {
+      "optional": true
+    },
+    "@typescript-eslint/parser": {
+      "optional": true
+    }
   },
   "files": [
     "bin/",
@@ -46,6 +62,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.0.3"
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0"
   }
 }

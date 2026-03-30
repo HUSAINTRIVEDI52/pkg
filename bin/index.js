@@ -47,6 +47,7 @@ const { isGitRepo } = require('../lib/git');
 const { logInfo, logError, logSuccess } = require('../lib/logger');
 const { fixInvalidAliases } = require('../lib/fixer');
 const { setupESLintConfig } = require('../lib/eslint');
+const { readJSON } = require('../lib/utils');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // STEP 2 — Parse command and detect context
@@ -142,10 +143,9 @@ if (isPostInstall) {
 
       // Ensure tools are installed
       const { installSonarScanner } = require('../lib/sonarqube');
-      const { installDevDependency } = require('../lib/packageManager');
+      const { installAllRequiredDependencies } = require('../lib/packageManager');
       await installSonarScanner();
-      await installDevDependency('eslint');
-      await installDevDependency('@eslint/js');
+      await installAllRequiredDependencies();
 
       await setupESLintConfig();
       await setupSonarProperties();
@@ -176,12 +176,13 @@ if (isPostInstall) {
       logInfo('Monorepo detected — hooks at git root, config files at project root.');
     }
 
-    const { installDevDependency } = require('../lib/packageManager');
+    const { installAllRequiredDependencies } = require('../lib/packageManager');
     await installHusky(gitRoot);
     await installGitleaks(gitRoot);
     await installSonarScanner();
-    await installDevDependency('eslint');
-    await installDevDependency('@eslint/js');
+    
+    // Install all required ESLint dependencies
+    await installAllRequiredDependencies();
 
     // Setup ESLint with TypeScript support
     await setupESLintConfig();
@@ -195,7 +196,7 @@ if (isPostInstall) {
     await setupCIScript(projectRoot);
     await require('../lib/ci').ensureProjectScripts();
     
-    // await setupCIWorkflow(); // Disabled as per user preference for pre-push only
+    await setupCIWorkflow();
     await setupPrePushHook(gitRoot);
     logSuccess('Pre-push hook ready.');
 
