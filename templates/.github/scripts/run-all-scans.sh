@@ -263,6 +263,55 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
+# STEP 1.5 — Unit Testing
+# ─────────────────────────────────────────────────────────────────────────────
+log "-------------------------------------------------------"
+log "STEP 1.5: Unit Testing"
+log "-------------------------------------------------------"
+
+if [ "${SONAR_QG_FAILED:-false}" = "false" ] && [ "${SONAR_RESULT}" = "passed" ]; then
+  cd "${APP_DIR}"
+  if [ -d "tests" ]; then
+    log "Found 'tests' folder. Running unit tests..."
+    if [ -f "package.json" ]; then
+      log "Installing dependencies via npm install..."
+      npm install --no-audit --no-fund --legacy-peer-deps > npm-install.log 2>&1 || warn "npm install warnings, proceeding anyway..."
+
+      # Detect test command from package.json
+      if grep -q '"test:all":' package.json; then
+        TEST_CMD="npm run test:all"
+      elif grep -q '"test:smoke":' package.json; then
+        TEST_CMD="npm run test:smoke"
+      elif grep -q '"test":' package.json; then
+        TEST_CMD="npm test"
+      else
+        warn "Could not find a test script in package.json. Defaulting to 'npm test'"
+        TEST_CMD="npm test"
+      fi
+
+      log "Executing tests: ${TEST_CMD}"
+      if ${TEST_CMD}; then
+        ok "Unit tests passed successfully!"
+      else
+        fail "Unit tests failed!"
+        exit 1
+      fi
+    else
+      warn "No package.json found in root. Cannot run npm install/test."
+    fi
+  else
+    echo ""
+    echo "======================================================="
+    echo "               NO 'tests' DIRECTORY FOUND              "
+    echo "              SKIPPING UNIT TESTS ENTIRELY             "
+    echo "======================================================="
+    echo ""
+  fi
+else
+  warn "SonarQube Quality Gate did not pass (or scan failed). Skipping unit tests."
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 # STEP 2 — Import to DefectDojo
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
