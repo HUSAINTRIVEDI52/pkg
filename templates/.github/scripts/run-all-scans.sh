@@ -18,6 +18,7 @@ SONAR_RESULT="skipped"
 IMPORT_COUNT=0
 FINAL_FORMAT="none"
 DOJO_IMPORT_FAILED=false
+SONAR_QG_FAILED=false
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 mkdir -p "${REPORTS_DIR}"
@@ -235,6 +236,16 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
       -o "${REPORTS_DIR}/sonarqube-report.json"
     SIZE=$(wc -c < "${REPORTS_DIR}/sonarqube-report.json" 2>/dev/null || echo 0)
 
+    log "Checking Quality Gate status..."
+    QG_RESP=$(curl -s -u "${SONAR_TOKEN}:" "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null || echo "{}")
+    QG_STATUS=$(echo "${QG_RESP}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "UNKNOWN")
+    log "Quality Gate status is: ${QG_STATUS}"
+    
+    if [ "${QG_STATUS}" = "ERROR" ] || [ "${QG_STATUS}" = "FAIL" ] || [ "${STATUS}" = "FAILED" ]; then
+      warn "SonarQube Quality Gate stopped/failed!"
+      SONAR_QG_FAILED=true
+    fi
+
     if [ "${SIZE}" -gt 500 ]; then
       ok "SonarQube report saved (${SIZE} bytes)"
       SONAR_RESULT="passed"
@@ -406,3 +417,8 @@ log " Report format:      ${FINAL_FORMAT}"
 log " Report:             ${REPORTS_DIR}/final-report.${FINAL_FORMAT}"
 log "======================================================="
 ok "Done. Report will be uploaded as GitHub artifact."
+
+if [ "${SONAR_QG_FAILED}" = "true" ]; then
+  fail "Failing pipeline: SonarQube Quality Gate checks did not pass."
+  exit 1
+fi
