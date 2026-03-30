@@ -16,7 +16,7 @@ jobs:
   # ── JOB 1: PREPARE ──────────────────────────────────────────────────────────
   prepare:
     name: "Prepare"
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     outputs:
       short_sha:   ${{ steps.meta.outputs.short_sha }}
       run_date:    ${{ steps.meta.outputs.run_date }}
@@ -54,7 +54,7 @@ jobs:
   # ── JOB 2: RUN SCANS ────────────────────────────────────────────────────────
   run-scans:
     name: "Run Security Scans"
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: prepare
 
     steps:
@@ -90,7 +90,7 @@ jobs:
   # ── JOB 3: UPLOAD ARTIFACT ──────────────────────────────────────────────────
   collect-report:
     name: "Upload Report as GitHub Artifact"
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: [prepare, run-scans]
     if: always() && needs.run-scans.result != 'cancelled'
 
@@ -134,7 +134,7 @@ jobs:
   # ── JOB 4: CLEANUP ──────────────────────────────────────────────────────────
   cleanup:
     name: "Cleanup"
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     needs: collect-report
     if: always()
 
