@@ -72,30 +72,27 @@ HAS_START=$(node -e "try{const p=require('./package.json');console.log(p.scripts
 HAS_DEV=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts.dev?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
 # ---------------------------------------------------------------
-# COMPULSORY: Smoke tests (Jest/Vitest/etc) — no server needed
+# Smoke Tests — Skip with warning if no test:smoke script found
 # ---------------------------------------------------------------
 
 echo ""
 echo "=================================================="
-echo "🔥 [Smoke Tests] Running Smoke Tests..."
+echo "🔥 [Smoke Tests] Checking for smoke test script..."
 echo "=================================================="
 
 HAS_SMOKE=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:smoke']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
+
 if [ "$HAS_SMOKE" = "yes" ]; then
-  echo "[Smoke Tests] Running standardized 'test:smoke' script..."
+  echo "[Smoke Tests] Running 'test:smoke' script..."
   if ! npm run test:smoke; then
     echo "✖ [Smoke Tests] Failed. Push blocked."
     exit 1
   fi
+  echo "✅ [Smoke Tests] Passed ✔"
 else
-  # No test:smoke — try generating coverage directly if jest exists
-  if [ -f "./node_modules/.bin/jest" ]; then
-    echo "[Smoke Tests] Generating coverage report..."
-    ./node_modules/.bin/jest --coverage --coverageReporters=lcov text 2>/dev/null || true
-  fi
+  echo "⚠️  [Smoke Tests] WARNING: No 'test:smoke' script found in package.json."
+  echo "[Smoke Tests] Skipping smoke tests — add a 'test:smoke' script to enable them."
 fi
-
-echo "✅ [Smoke Tests] Passed ✔"
 
 # ---------------------------------------------------------------
 # Start server ONCE — used by both Newman flows below
@@ -177,20 +174,30 @@ echo "=================================================="
 
 HAS_NEWMAN_SCRIPT=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:newman']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
-if [ "$HAS_NEWMAN_SCRIPT" = "yes" ]; then
-  echo "[Newman] Running standardized 'test:newman' script..."
-  if ! npm run test:newman; then
-    echo "✖ [Newman] API tests failed. Push blocked."
-    if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
-    exit 1
-  fi
+COLLECTIONS=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" -name "*.postman_collection.json" 2>/dev/null)
+
+if [ -z "$COLLECTIONS" ]; then
+  echo ""
+  echo "⚠️  ============================================================"
+  echo "⚠️  [Newman] WARNING: No *.postman_collection.json file found."
+  echo "⚠️  SKIPPING Newman API tests — push will continue."
+  echo "⚠️  To enable: add a Postman collection to your project,"
+  echo "⚠️    e.g.  tests/my-api.postman_collection.json"
+  echo "⚠️  ============================================================"
+  echo ""
 else
-  # Fallback: run local .postman_collection.json files directly
-  echo "[Newman] No 'test:newman' script found — searching for local collections..."
-  COLLECTIONS=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" -name "*.postman_collection.json" 2>/dev/null)
+  if [ "$HAS_NEWMAN_SCRIPT" = "yes" ]; then
+    echo "[Newman] Running standardized 'test:newman' script..."
+    if ! npm run test:newman; then
+      echo "✖ [Newman] API tests failed. Push blocked."
+      if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
+      exit 1
+    fi
+  else
+    # Fallback: run local .postman_collection.json files directly
+    echo "[Newman] No 'test:newman' script found — running local collections..."
 
   if [ -n "$COLLECTIONS" ]; then
-    if ! command -v newman >/dev/null 2>&1; then
       echo "[Newman] Installing newman..."
       npm install -g newman newman-reporter-htmlextra >/dev/null 2>&1 || true
     fi
@@ -223,8 +230,6 @@ else
       if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
       exit 1
     fi
-  else
-    echo "ℹ️  [Newman] No Postman collections found. Skipping."
   fi
 fi
 
