@@ -40,7 +40,6 @@ log "======================================================="
 
 REQUIRED=(
   GIT_SHA GIT_BRANCH RUN_DATE
-  SONAR_HOST_URL SONAR_TOKEN
   DEFECTDOJO_URL DEFECTDOJO_API_KEY
   DEFECTDOJO_ENGAGEMENT_ID DEFECTDOJO_PRODUCT_ID
 )
@@ -54,10 +53,23 @@ if [ ${#MISSING[@]} -gt 0 ]; then
 fi
 ok "All required env vars present"
 
+# ── Extract SonarQube Credentials from Config ────────────────────────────────
+log "Extracting Sonar credentials strictly from sonar-project.properties..."
+if [ -f "sonar-project.properties" ]; then
+  SONAR_HOST_URL=$(grep -i '^sonar\.host\.url=' sonar-project.properties | cut -d= -f2- | tr -d '\r\n ' || true)
+  SONAR_TOKEN=$(grep -i -E '^sonar\.token=|^sonar\.login=' sonar-project.properties | cut -d= -f2- | tr -d '\r\n ' || true)
+else
+  warn "No sonar-project.properties file found!"
+fi
+
+if [ -z "${SONAR_HOST_URL}" ] || [ -z "${SONAR_TOKEN}" ]; then
+  fail "SonarQube credentials missing! 'sonar.host.url' and 'sonar.token' must be placed in sonar-project.properties."
+  exit 1
+fi
+ok "Successfully loaded SonarQube credentials from configuration."
+
 # ── Clean Secrets (Strip Newlines & Whitespace) ──────────────────────────────
-log "Trimming whitespace and newlines from secrets..."
-SONAR_TOKEN=$(echo "${SONAR_TOKEN}" | tr -d '\r\n ')
-SONAR_HOST_URL=$(echo "${SONAR_HOST_URL}" | tr -d '\r\n ')
+log "Trimming whitespace and newlines from DefectDojo secrets..."
 DEFECTDOJO_URL=$(echo "${DEFECTDOJO_URL}" | tr -d '\r\n ')
 DEFECTDOJO_API_KEY=$(echo "${DEFECTDOJO_API_KEY}" | tr -d '\r\n ')
 DEFECTDOJO_ENGAGEMENT_ID=$(echo "${DEFECTDOJO_ENGAGEMENT_ID}" | tr -d '\r\n ')
