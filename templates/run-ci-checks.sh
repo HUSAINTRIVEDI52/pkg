@@ -82,7 +82,9 @@ echo "=================================================="
 
 HAS_SMOKE=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:smoke']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
-if [ "$HAS_SMOKE" = "yes" ]; then
+TEST_FILES=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" \( -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" \) 2>/dev/null)
+
+if [ "$HAS_SMOKE" = "yes" ] && [ -n "$TEST_FILES" ]; then
   echo "[Smoke Tests] Running 'test:smoke' script..."
   if ! npm run test:smoke; then
     echo "✖ [Smoke Tests] Failed. Push blocked."
@@ -90,8 +92,16 @@ if [ "$HAS_SMOKE" = "yes" ]; then
   fi
   echo "✅ [Smoke Tests] Passed ✔"
 else
-  echo "⚠️  [Smoke Tests] WARNING: No 'test:smoke' script found in package.json."
-  echo "[Smoke Tests] Skipping smoke tests — add a 'test:smoke' script to enable them."
+  echo ""
+  echo "⚠️  ============================================================"
+  if [ "$HAS_SMOKE" != "yes" ]; then
+    echo "⚠️  [Smoke Tests] WARNING: No 'test:smoke' script found in package.json."
+  else
+    echo "⚠️  [Smoke Tests] WARNING: No test files found (*.test.js / *.spec.js)."
+  fi
+  echo "⚠️  SKIPPING smoke tests — push will continue."
+  echo "⚠️  ============================================================"
+  echo ""
 fi
 
 # ---------------------------------------------------------------
