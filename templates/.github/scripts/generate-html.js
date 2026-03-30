@@ -47,7 +47,7 @@ try {
                 <tr>
                     <th>Severity</th>
                     <th>Vulnerability Title</th>
-                    <th>Component</th>
+                    <th>Location / Component</th>
                     <th>Status</th>
                 </tr>
             </thead>
@@ -55,11 +55,14 @@ try {
             
     data.results.forEach(finding => {
       const sev = finding.severity || 'Info';
+      let location = finding.file_path ? finding.file_path + (finding.line ? ':' + finding.line : '') : finding.component_name;
+      location = location || 'N/A';
+      
       html += `
                 <tr>
                     <td><span class="sev-badge sev-${sev}">${sev}</span></td>
                     <td>${finding.title || 'N/A'}</td>
-                    <td>${finding.component_name || 'N/A'}</td>
+                    <td>${location}</td>
                     <td>${finding.active ? 'Active' : 'Inactive'}</td>
                 </tr>`;
     });
