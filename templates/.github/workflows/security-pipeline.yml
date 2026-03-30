@@ -40,10 +40,10 @@ jobs:
         run: |
           echo "Checking pre-configured tools..."
           command -v docker &>/dev/null && echo "✓ Docker: $(docker --version)" || { echo "✗ Docker missing"; exit 1; }
-          command -v node &>/dev/null && echo "✓ Node.js: $(node --version)" || { echo "✗ Node.js missing"; exit 1; }
+          command -v node &>/dev/null && echo "✓ Node.js: $(node --version)" || echo "⚠ Node.js not found (non-Node project)"
           docker ps 2>/dev/null || sudo docker ps
 
-      - name: Create workspace and fix permissions
+      - name: Create workspace
         run: |
           mkdir -p ~/security-scan/reports
           mkdir -p ~/security-scan/app
@@ -65,11 +65,16 @@ jobs:
         run: |
           mkdir -p ~/security-scan/app
           mkdir -p ~/security-scan/scripts
+          mkdir -p ~/security-scan/reports
+          # Copy entire repo root — no hardcoded subfolder
           cp -r . ~/security-scan/app/
           cp .github/scripts/run-all-scans.sh \
              ~/security-scan/scripts/run-all-scans.sh
+          cp .github/scripts/generate-html.js \
+             ~/security-scan/scripts/generate-html.js 2>/dev/null || true
           chmod +x ~/security-scan/scripts/run-all-scans.sh
-          echo "✓ Ready"
+          echo "✓ Workspace contents:"
+          ls -la ~/security-scan/app/
 
       - name: Run security scans
         env:
@@ -87,6 +92,16 @@ jobs:
           bash ~/security-scan/scripts/run-all-scans.sh
         timeout-minutes: 75
 
+      # ── Upload reports so collect-report job can access them ────────────────
+      - name: Upload raw scan reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-scan-reports-${{ needs.prepare.outputs.short_sha }}
+          path: ~/security-scan/reports/
+          retention-days: 7
+          if-no-files-found: warn
+
   # ── JOB 3: UPLOAD ARTIFACT ──────────────────────────────────────────────────
   collect-report:
     name: "Upload Report as GitHub Artifact"
@@ -95,18 +110,34 @@ jobs:
     if: always() && needs.run-scans.result != 'cancelled'
 
     steps:
-      - name: Find and rename report
+      # ── Download reports produced by run-scans ──────────────────────────────
+      - name: Download raw scan reports
+        uses: actions/download-artifact@v4
+        with:
+          name: raw-scan-reports-${{ needs.prepare.outputs.short_sha }}
+          path: ~/security-scan/reports/
+        continue-on-error: true
+
+      - name: List downloaded reports
+        run: |
+          echo "Reports available:"
+          ls -lh ~/security-scan/reports/ 2>/dev/null || echo "No reports directory found"
+
+      - name: Rename final reports
         id: find
         run: |
-          REPORT=$(ls ~/security-scan/reports/final-report.* 2>/dev/null | head -1)
-          if [ -n "${REPORT}" ]; then
+          FOUND="none"
+          for REPORT in ~/security-scan/reports/final-report.*; do
+            [ -e "$REPORT" ] || continue
             EXT="${REPORT##*.}"
             DEST=~/security-scan/reports/${{ needs.prepare.outputs.report_name }}.${EXT}
             cp "${REPORT}" "${DEST}"
-            echo "report_file=${{ needs.prepare.outputs.report_name }}.${EXT}" >> $GITHUB_OUTPUT
             echo "✓ Report ready: ${DEST}"
-          else
-            echo "No final report found — uploading all raw reports"
+            FOUND="found"
+          done
+          echo "report_file=${{ needs.prepare.outputs.report_name }}" >> $GITHUB_OUTPUT
+          if [ "$FOUND" = "none" ]; then
+            echo "⚠ No final reports found — uploading all raw reports as-is"
           fi
 
       - name: Upload as GitHub artifact
@@ -125,11 +156,10 @@ jobs:
           echo "| Branch | \`${{ github.ref_name }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Commit | \`${{ needs.prepare.outputs.short_sha }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Date | ${{ needs.prepare.outputs.run_date }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Scans | SonarQube SAST + Dependency-Check SCA |" >> $GITHUB_STEP_SUMMARY
-          echo "| Runner | Self-hosted runner |" >> $GITHUB_STEP_SUMMARY
+          echo "| Scans | SonarQube SAST |" >> $GITHUB_STEP_SUMMARY
           echo "| Report | \`${{ steps.find.outputs.report_file }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Download the report from the Artifacts section above..." >> $GITHUB_STEP_SUMMARY
+          echo "Download the full report from the Artifacts section above." >> $GITHUB_STEP_SUMMARY
 
   # ── JOB 4: CLEANUP ──────────────────────────────────────────────────────────
   cleanup:
@@ -141,6 +171,5 @@ jobs:
     steps:
       - name: Remove containers and workspace
         run: |
-          docker rm -f dep-check 2>/dev/null || true
           rm -rf ~/security-scan/app/
           echo "✓ Cleanup done"
