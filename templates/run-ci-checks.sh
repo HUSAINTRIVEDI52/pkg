@@ -6,7 +6,7 @@
 
 echo ""
 echo "=================================================="
-echo "🚀 [CI Checks] Starting COMPULSORY local CI pipeline"
+echo "🚀 [CI Checks] Starting local CI pipeline"
 echo "=================================================="
 
 # ---------------------------------------------------------------
