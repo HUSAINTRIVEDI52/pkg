@@ -101,7 +101,7 @@ jobs:
         with:
           name: raw-scan-reports-${{ needs.prepare.outputs.short_sha }}
           path: ~/security-scan/reports/
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: warn
 
   # ── JOB 3: UPLOAD ARTIFACT ──────────────────────────────────────────────────
@@ -147,7 +147,7 @@ jobs:
         with:
           name: ${{ needs.prepare.outputs.report_name }}
           path: ~/security-scan/reports/
-          retention-days: 30
+          retention-days: 90
           if-no-files-found: warn
 
       - name: Write job summary
