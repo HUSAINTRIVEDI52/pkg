@@ -87,6 +87,8 @@ jobs:
           DEFECTDOJO_API_KEY:       ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
           DEFECTDOJO_PRODUCT_ID:    ${{ secrets.DEFECTDOJO_PRODUCT_ID }}
+          POSTMAN_API_KEY:          ${{ secrets.POSTMAN_API_KEY }}
+          COLLECTION_UID:           ${{ secrets.COLLECTION_UID }}
         run: |
           export PATH="/usr/local/bin:/usr/bin:$PATH"
           bash ~/security-scan/scripts/run-all-scans.sh
