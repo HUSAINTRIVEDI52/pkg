@@ -82,3 +82,6 @@ The package automatically detects if your Node project is in a subdirectory of t
 
 - **Hooks aren't running?** Ensure you have initialized a Git repository (`git init`) before installing the package. You can manually run `npx cs-setup init` to retry.
 - **Server fails to start in CI?** Ensure your `package.json` has a valid `start` or `dev` script. The setup detects common ports, but explicitly setting `PORT=` in your `.env` is recommended.
+
+
+
