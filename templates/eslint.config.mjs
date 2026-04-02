@@ -9,6 +9,7 @@ try {
   const pluginMod = await import('@typescript-eslint/eslint-plugin');
   tsPlugin = pluginMod.default || pluginMod;
 } catch (e) {
+  // These will not trigger errors because the file ignores itself at the bottom
   console.warn('\n[🚨 cs-setup warning] Failed to load @typescript-eslint/parser or @typescript-eslint/eslint-plugin.');
   console.warn('[cs-setup] TypeScript files will use the default JS parser and may throw "Parsing error: Unexpected token".');
   console.warn('[cs-setup] Try running: npm install -D @typescript-eslint/parser @typescript-eslint/eslint-plugin\n');
@@ -50,6 +51,7 @@ const config = [
         navigator: 'readonly',
         location: 'readonly',
         fetch: 'readonly',
+        alert: 'readonly', // Added to handle alert calls in stories/tests
         // React
         React: 'readonly',
       },
@@ -72,11 +74,15 @@ const config = [
       }],
     },
   },
-  // Base configuration placeholder for TS files
-  // Full Typescript configuration is optionally added at the end of this file 
-  // if the @typescript-eslint plugins are installed.
   {
-    files: ['**/*.test.{js,jsx,ts,tsx}', '**/*.spec.{js,jsx,ts,tsx}', '**/tests/**/*.{js,jsx,ts,tsx}', '**/__tests__/**/*.{js,jsx,ts,tsx}'],
+    // Added **/setup-tests.ts to fix globals in test setup files
+    files: [
+      '**/*.test.{js,jsx,ts,tsx}',
+      '**/*.spec.{js,jsx,ts,tsx}',
+      '**/tests/**/*.{js,jsx,ts,tsx}',
+      '**/__tests__/**/*.{js,jsx,ts,tsx}',
+      '**/setup-tests.{ts,tsx}'
+    ],
     languageOptions: {
       globals: {
         describe: 'readonly',
@@ -93,7 +99,7 @@ const config = [
     },
   },
   {
-    ignores: ['node_modules/**', 'dist/**', 'build/**', 'coverage/**'],
+    ignores: ['eslint.config.mjs', 'node_modules/**', 'dist/**', 'build/**', 'coverage/**'],
   },
 ];
 
@@ -113,6 +119,9 @@ if (tsParser && tsPlugin) {
     },
     rules: {
       'no-unused-vars': 'off',
+      // FIX: Standard TS practice to turn off no-undef. 
+      // TS compiler handles this; ESLint 'no-undef' flags valid TS types as errors.
+      'no-undef': 'off',
       '@typescript-eslint/no-unused-vars': ['warn', {
         varsIgnorePattern: '^React$|^_|^use[A-Z]|^[A-Z]',
         argsIgnorePattern: '^_',
