@@ -5,7 +5,7 @@ let tsParser, tsPlugin;
 try {
   const parserMod = await import('@typescript-eslint/parser');
   tsParser = parserMod.default || parserMod;
-  
+
   const pluginMod = await import('@typescript-eslint/eslint-plugin');
   tsPlugin = pluginMod.default || pluginMod;
 } catch (e) {
