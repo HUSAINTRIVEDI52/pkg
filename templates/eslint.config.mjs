@@ -9,7 +9,9 @@ try {
   const pluginMod = await import('@typescript-eslint/eslint-plugin');
   tsPlugin = pluginMod.default || pluginMod;
 } catch (e) {
-  // Not installed, proceed without TS support
+  console.warn('\n[🚨 cs-setup warning] Failed to load @typescript-eslint/parser or @typescript-eslint/eslint-plugin.');
+  console.warn('[cs-setup] TypeScript files will use the default JS parser and may throw "Parsing error: Unexpected token".');
+  console.warn('[cs-setup] Try running: npm install -D @typescript-eslint/parser @typescript-eslint/eslint-plugin\n');
 }
 
 const config = [
@@ -100,6 +102,11 @@ if (tsParser && tsPlugin) {
     files: ['**/*.{ts,tsx}'],
     languageOptions: {
       parser: tsParser,
+      parserOptions: {
+        ecmaFeatures: {
+          jsx: true,
+        },
+      },
     },
     plugins: {
       '@typescript-eslint': tsPlugin,
