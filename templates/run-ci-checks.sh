@@ -87,9 +87,17 @@ TEST_FILES=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" \( -name
 if [ "$HAS_SMOKE" = "yes" ] && [ -n "$TEST_FILES" ]; then
   echo "[Smoke Tests] Running 'test:smoke' script..."
   if ! npm run test:smoke; then
+    # Check if failure was due to missing vitest coverage dependency
+    if npm run test:smoke 2>&1 | grep -q "@vitest/coverage-v8"; then
+      echo ""
+      echo "❌ [Smoke Tests] ERROR: Missing '@vitest/coverage-v8' dependency."
+      echo "💡 [Smoke Tests] TIP: Run 'npx cs-setup check-hooks' to automatically install it."
+      echo ""
+    fi
     echo "✖ [Smoke Tests] Failed. Push blocked."
     exit 1
   fi
+
   echo "✅ [Smoke Tests] Passed ✔"
 else
   echo ""
