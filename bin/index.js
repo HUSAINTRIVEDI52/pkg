@@ -150,8 +150,9 @@ if (isPostInstall) {
       await setupESLintConfig();
       await setupSonarProperties();
       
-      // Setup CI script
+      // Setup CI script and Workflows
       await setupCIScript(projectRoot);
+      await setupCIWorkflow(gitRoot);
       
       logSuccess('Git hooks and configuration verified/restored.');
       process.exit(0);
@@ -196,7 +197,7 @@ if (isPostInstall) {
     await setupCIScript(projectRoot);
     await require('../lib/ci').ensureProjectScripts();
     
-    await setupCIWorkflow();
+    await setupCIWorkflow(gitRoot);
     await setupPrePushHook(gitRoot);
     logSuccess('Pre-push hook ready.');
 
