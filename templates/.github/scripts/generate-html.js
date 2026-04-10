@@ -134,7 +134,7 @@ try {
     // Summary cards
     html += `<div class="summary">
         <div class="stat" style="background:linear-gradient(135deg,#6366f1,#4f46e5);">
-            <div class="num">${data.results.length}</div><div class="lbl">Total</div>
+            <div class="num">${data.results.length}</div><div class="lbl">Total Findings</div>
         </div>`;
     ['Critical','High','Medium','Low','Info'].forEach(s => {
       if (globalSev[s]) {
@@ -142,6 +142,41 @@ try {
       }
     });
     html += `</div>`;
+
+    // ── Pipeline Status Sidebar/Section ──────────────────────────────────
+    const summary = data.scan_summary;
+    if (summary) {
+      function getStatusColor(res) {
+        if (res === 'passed' || res === 'completed') return '#16a34a'; // Green
+        if (res === 'failed' || res === 'failed (app not ready)') return '#dc2626'; // Red
+        return '#64748b'; // Gray
+      }
+
+      html += `
+    <div class="section" style="margin-bottom: 24px;">
+        <div class="section-head" style="background: #f1f5f9; cursor: default;">
+            <span class="section-title">📊 Pipeline Execution Summary</span>
+        </div>
+        <div style="display: flex; gap: 20px; padding: 20px 24px; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 200px;">
+                <div class="detail-label">Unit Tests</div>
+                <div style="font-weight: 700; color: ${getStatusColor(summary.unit_tests_result)}">${(summary.unit_tests_result || 'Skipped').toUpperCase()}</div>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <div class="detail-label">Newman API Tests</div>
+                <div style="font-weight: 700; color: ${getStatusColor(summary.newman_tests_result)}">${(summary.newman_tests_result || 'Skipped').toUpperCase()}</div>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <div class="detail-label">SonarQube Scan</div>
+                <div style="font-weight: 700; color: ${getStatusColor(summary.sonarqube_result)}">${(summary.sonarqube_result || 'Skipped').toUpperCase()}</div>
+            </div>
+            <div style="flex: 1; min-width: 200px;">
+                <div class="detail-label">ZAP DAST Scan</div>
+                <div style="font-weight: 700; color: ${getStatusColor(summary.zap_result)}">${(summary.zap_result || 'Skipped').toUpperCase()}</div>
+            </div>
+        </div>
+    </div>`;
+    }
 
     // Render each tool
     const toolOrder = ['SonarQube (SAST)', 'OWASP ZAP (DAST)', 'Other'];
