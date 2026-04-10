@@ -219,6 +219,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
     log "Using installed sonar-scanner CLI..."
     sonar-scanner \
       -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+      -Dsonar.projectName="${PROJECT_NAME}" \
       -Dsonar.host.url="${SONAR_HOST_URL}" \
       -Dsonar.token="${SONAR_TOKEN}" \
       -Dsonar.sources=. \
@@ -232,6 +233,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
       -v "${APP_DIR}:/usr/src" \
       sonarsource/sonar-scanner-cli:latest \
       -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+      -Dsonar.projectName="${PROJECT_NAME}" \
       -Dsonar.host.url="${SONAR_HOST_URL}" \
       -Dsonar.token="${SONAR_TOKEN}" \
       -Dsonar.sources=/usr/src \
