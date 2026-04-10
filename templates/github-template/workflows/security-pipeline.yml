@@ -83,7 +83,6 @@ jobs:
           RUN_DATE:                 ${{ needs.prepare.outputs.run_date }}
           SONAR_HOST_URL:           ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN:              ${{ secrets.SONAR_TOKEN }}
-          SONAR_PROJECT_KEY:        ${{ secrets.SONAR_PROJECT_KEY }}
           DEFECTDOJO_URL:           ${{ secrets.DEFECTDOJO_URL }}
           DEFECTDOJO_API_KEY:       ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}

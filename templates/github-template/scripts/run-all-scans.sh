@@ -151,42 +151,24 @@ log "-------------------------------------------------------"
 if [ "${SONAR_REACHABLE}" = "true" ]; then
   cd "${APP_DIR}"
 
-  # --- Priority 1: Use SONAR_PROJECT_KEY from environment if set ---
-  if [ -n "${SONAR_PROJECT_KEY:-}" ]; then
-    ok "Using manually provided SonarQube project key: ${SONAR_PROJECT_KEY}"
+  log "Determining SonarQube project identity..."
+  PKG_JSON=""
+  if [ -f "package.json" ]; then
+    PKG_JSON="package.json"
+  elif [ -n "$(find . -maxdepth 2 -name "package.json" ! -path "*/node_modules/*" | head -1)" ]; then
+    PKG_JSON=$(find . -maxdepth 2 -name "package.json" ! -path "*/node_modules/*" | head -1)
+  fi
+
+  if [ -n "${PKG_JSON}" ]; then
+    log "Found package.json at: ${PKG_JSON}"
+    PROJECT_NAME=$(grep -m 1 '"name":' "${PKG_JSON}" | cut -d'"' -f4 || echo "unknown-project")
   else
-    # --- Priority 2: Use sonar-project.properties if it exists ---
-    if [ -f "sonar-project.properties" ]; then
-      SONAR_PROJECT_KEY=$(grep -E "^sonar.projectKey=" sonar-project.properties | cut -d= -f2 | tr -d '\r\n ')
-      if [ -n "${SONAR_PROJECT_KEY}" ]; then
-        ok "Found project key in sonar-project.properties: ${SONAR_PROJECT_KEY}"
-      fi
-    fi
-
-    # --- Priority 3: Derive from package.json if still not found ---
-    if [ -z "${SONAR_PROJECT_KEY:-}" ]; then
-      PKG_JSON=""
-      if [ -f "package.json" ]; then
-        PKG_JSON="package.json"
-      elif [ -n "$(find . -maxdepth 2 -name "package.json" ! -path "*/node_modules/*" | head -1)" ]; then
-        PKG_JSON=$(find . -maxdepth 2 -name "package.json" ! -path "*/node_modules/*" | head -1)
-      fi
-
-      if [ -n "${PKG_JSON}" ]; then
-        log "Found package.json at: ${PKG_JSON}"
-        PROJECT_NAME=$(grep -m 1 '"name":' "${PKG_JSON}" | cut -d'"' -f4 || echo "unknown-project")
-        SONAR_PROJECT_KEY=$(echo "${PROJECT_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._:-]/-/g')
-        ok "Derived SonarQube project key: ${SONAR_PROJECT_KEY}"
-      else
-        warn "No package.json found — using repository name as project key"
-        REPO_NAME=$(basename "${APP_DIR}")
-        SONAR_PROJECT_KEY=$(echo "${REPO_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._:-]/-/g')
-        ok "Using project key: ${SONAR_PROJECT_KEY}"
-      fi
-    fi
+    warn "No package.json found — using repository name as project name"
+    PROJECT_NAME=$(basename "${APP_DIR}")
   fi
   
-  PROJECT_NAME="${PROJECT_NAME:-${SONAR_PROJECT_KEY}}"
+  SONAR_PROJECT_KEY=$(echo "${PROJECT_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._:-]/-/g')
+  ok "Derived SonarQube project name: ${PROJECT_NAME}, key: ${SONAR_PROJECT_KEY}"
 
   # --- Skip Project Creation if Token lacks Admin rights (Graceful 401/403) ---
   log "Checking if project '${SONAR_PROJECT_KEY}' exists in SonarQube..."
@@ -197,7 +179,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
   PROJECT_EXISTS=$(echo "${PROJECT_SEARCH_RESP}" | grep -q "\"key\":\"${SONAR_PROJECT_KEY}\"" && echo "true" || echo "false")
 
   if [ "${PROJECT_EXISTS}" = "false" ] && [ "${PROJECT_SEARCH_RESP}" != "REACH_ERROR" ]; then
-    log "Project not found. Attempting to create '${SONAR_PROJECT_KEY}'..."
+    log "Project not found. Auto-creating '${SONAR_PROJECT_KEY}'..."
     CREATE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
       -u "${SONAR_TOKEN}:" -X POST \
       "${SONAR_HOST_URL}/api/projects/create" \
@@ -205,7 +187,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
       -d "project=${SONAR_PROJECT_KEY}" || echo "000")
     
     if [ "${CREATE_STATUS}" = "200" ] || [ "${CREATE_STATUS}" = "201" ]; then
-      ok "Project created (HTTP ${CREATE_STATUS})"
+      ok "Project created successfully (HTTP ${CREATE_STATUS})"
     else
       warn "Could not create project (HTTP ${CREATE_STATUS}) — likely missing Admin permissions. Proceeding with scan anyway..."
     fi
@@ -215,32 +197,16 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
 
   SONAR_OK=false
 
-  if command -v sonar-scanner &>/dev/null; then
-    log "Using installed sonar-scanner CLI..."
-    sonar-scanner \
-      -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
-      -Dsonar.projectName="${PROJECT_NAME}" \
-      -Dsonar.host.url="${SONAR_HOST_URL}" \
-      -Dsonar.token="${SONAR_TOKEN}" \
-      -Dsonar.sources=. \
-      -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/tests/**,**/seeds/**,**/scripts/**,**/.git/**" \
-      -Dsonar.sourceEncoding=UTF-8 \
-      2>&1 && SONAR_OK=true || SONAR_OK=false
-  else
-    log "Using Docker sonar-scanner-cli..."
-    docker run --rm \
-      --network=host \
-      -v "${APP_DIR}:/usr/src" \
-      sonarsource/sonar-scanner-cli:latest \
-      -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
-      -Dsonar.projectName="${PROJECT_NAME}" \
-      -Dsonar.host.url="${SONAR_HOST_URL}" \
-      -Dsonar.token="${SONAR_TOKEN}" \
-      -Dsonar.sources=/usr/src \
-      -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/.git/**" \
-      -Dsonar.sourceEncoding=UTF-8 \
-      2>&1 && SONAR_OK=true || SONAR_OK=false
-  fi
+  log "Running SonarScanner via NPX to avoid Docker pulls..."
+  npx --yes sonar-scanner \
+    -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
+    -Dsonar.projectName="${PROJECT_NAME}" \
+    -Dsonar.host.url="${SONAR_HOST_URL}" \
+    -Dsonar.token="${SONAR_TOKEN}" \
+    -Dsonar.sources=. \
+    -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/tests/**,**/seeds/**,**/scripts/**,**/.git/**" \
+    -Dsonar.sourceEncoding=UTF-8 \
+    2>&1 && SONAR_OK=true || SONAR_OK=false
 
   if [ "${SONAR_OK}" = "true" ]; then
     log "Waiting 30s for SonarQube to process analysis..."
