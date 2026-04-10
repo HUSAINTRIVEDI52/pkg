@@ -18,8 +18,6 @@ SONAR_RESULT="skipped"
 IMPORT_COUNT=0
 FINAL_FORMAT="none"
 DOJO_IMPORT_FAILED=false
-SONAR_QG_FAILED=false
-UNIT_TEST_FAILED=false
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 mkdir -p "${REPORTS_DIR}"
@@ -64,8 +62,6 @@ DEFECTDOJO_URL=$(echo "${DEFECTDOJO_URL}" | tr -d '\r\n ')
 DEFECTDOJO_API_KEY=$(echo "${DEFECTDOJO_API_KEY}" | tr -d '\r\n ')
 DEFECTDOJO_ENGAGEMENT_ID=$(echo "${DEFECTDOJO_ENGAGEMENT_ID}" | tr -d '\r\n ')
 DEFECTDOJO_PRODUCT_ID=$(echo "${DEFECTDOJO_PRODUCT_ID}" | tr -d '\r\n ')
-export POSTMAN_API_KEY=$(echo "${POSTMAN_API_KEY:-}" | tr -d '\r\n ')
-export COLLECTION_UID=$(echo "${COLLECTION_UID:-}" | tr -d '\r\n ')
 
 # ── Normalize URLs ───────────────────────────────────────────────────────────
 if [[ ! "${SONAR_HOST_URL}" =~ ^https?:// ]]; then
@@ -194,7 +190,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
     sonar-scanner \
       -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
       -Dsonar.host.url="${SONAR_HOST_URL}" \
-      -Dsonar.token="${SONAR_TOKEN}" \
+      -Dsonar.login="${SONAR_TOKEN}" \
       -Dsonar.sources=. \
       -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/tests/**,**/seeds/**,**/scripts/**,**/.git/**" \
       -Dsonar.sourceEncoding=UTF-8 \
@@ -207,7 +203,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
       sonarsource/sonar-scanner-cli:latest \
       -Dsonar.projectKey="${SONAR_PROJECT_KEY}" \
       -Dsonar.host.url="${SONAR_HOST_URL}" \
-      -Dsonar.token="${SONAR_TOKEN}" \
+      -Dsonar.login="${SONAR_TOKEN}" \
       -Dsonar.sources=/usr/src \
       -Dsonar.exclusions="**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/.git/**" \
       -Dsonar.sourceEncoding=UTF-8 \
@@ -215,30 +211,56 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
   fi
 
   if [ "${SONAR_OK}" = "true" ]; then
-    log "Waiting 15s for SonarQube to process analysis..."
-    sleep 15
+    log "Waiting 30s for SonarQube to process analysis..."
+    sleep 30
+
+    log "Polling SonarQube background task..."
+    for i in $(seq 1 12); do
+      RAW_RESP=$(curl -s -u "${SONAR_TOKEN}:" \
+        "${SONAR_HOST_URL}/api/ce/component?component=${SONAR_PROJECT_KEY}")
+      STATUS=$(echo "${RAW_RESP}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "")
+      if [ -z "${STATUS}" ]; then
+        STATUS="UNKNOWN"
+        log "  Raw API response: ${RAW_RESP}"
+      fi
+      log "  Task status: ${STATUS} (attempt ${i}/12)"
+      [ "${STATUS}" = "SUCCESS" ] && break
+      [ "${STATUS}" = "FAILED" ] && { warn "SonarQube background task FAILED"; break; }
+      sleep 10
+    done
+
+    QG_FAILED=false
+    if [ "${STATUS}" = "SUCCESS" ]; then
+      log "Checking SonarQube Quality Gate status..."
+      # Give Elasticsearch/Quality Gate engine a few seconds to finalize
+      sleep 5 
+      QG_RESP=$(curl -s -u "${SONAR_TOKEN}:" \
+        "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}")
+      QG_STATUS=$(echo "${QG_RESP}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "UNKNOWN")
+      
+      if [ "${QG_STATUS}" = "OK" ]; then
+        ok "Quality Gate Passed (Status: ${QG_STATUS})"
+        SONAR_RESULT="passed"
+      else
+        warn "Quality Gate FAILED (Status: ${QG_STATUS})"
+        log "  Raw Quality Gate API Response: ${QG_RESP}"
+        SONAR_RESULT="failed (quality gate)"
+        QG_FAILED=true
+      fi
+    else
+      warn "SonarQube background task did not reach SUCCESS. Status: ${STATUS}"
+      SONAR_RESULT="failed (task incomplete)"
+    fi
 
     curl -s \
       -u "${SONAR_TOKEN}:" \
       "${SONAR_HOST_URL}/api/issues/search?componentKeys=${SONAR_PROJECT_KEY}&resolved=false&ps=500" \
-      -o "${REPORTS_DIR}/sonarqube-report.json" 2>/dev/null || true
+      -o "${REPORTS_DIR}/sonarqube-report.json"
     SIZE=$(wc -c < "${REPORTS_DIR}/sonarqube-report.json" 2>/dev/null || echo 0)
-
-    log "Checking Quality Gate status..."
-    QG_RESP=$(curl -s --connect-timeout 15 --max-time 20 \
-      -u "${SONAR_TOKEN}:" \
-      "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=${SONAR_PROJECT_KEY}" 2>/dev/null || echo "{}")
-    QG_STATUS=$(echo "${QG_RESP}" | grep -o '"status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "UNKNOWN")
-    log "Quality Gate status is: ${QG_STATUS}"
-
-    if [ "${QG_STATUS}" = "ERROR" ] || [ "${QG_STATUS}" = "FAIL" ]; then
-      warn "SonarQube Quality Gate stopped/failed!"
-      SONAR_QG_FAILED=true
-    fi
 
     if [ "${SIZE}" -gt 500 ]; then
       ok "SonarQube report saved (${SIZE} bytes)"
-      SONAR_RESULT="passed"
+      [ "${QG_FAILED}" != "true" ] && SONAR_RESULT="passed"
     else
       warn "SonarQube report too small (${SIZE} bytes) — likely empty or error"
       warn "Raw: $(cat "${REPORTS_DIR}/sonarqube-report.json" 2>/dev/null || echo 'unreadable')"
@@ -253,194 +275,66 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 1.5 — Unit & API Testing
-# Rule: If test files exist → run them. If not → skip.
+# STEP 2 — OWASP ZAP DAST Scan
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 1.5: Unit & API Testing"
+log "STEP 2: OWASP ZAP DAST Scan"
 log "-------------------------------------------------------"
+log "Starting the backend application on port 3000..."
+cd "${APP_DIR}"
+npm ci --silent > /dev/null 2>&1 || true
+npm start > /dev/null 2>&1 &
+APP_PID=$!
 
-if [ "${SONAR_QG_FAILED:-false}" = "false" ] && [ "${SONAR_RESULT}" = "passed" ]; then
-  cd "${APP_DIR}"
+log "Waiting up to 30s for the application to be ready on http://localhost:3000..."
+APP_READY=false
+for i in $(seq 1 15); do
+  if curl -s http://localhost:3000 > /dev/null; then
+    APP_READY=true
+    break
+  fi
+  sleep 2
+done
 
-  if [ ! -d "tests" ]; then
-    echo ""
-    echo "======================================================="
-    echo "          NO 'tests' DIRECTORY FOUND                   "
-    echo "          SKIPPING ALL TESTS ENTIRELY                  "
-    echo "======================================================="
-    echo ""
-  elif [ ! -f "package.json" ]; then
-    warn "No package.json found. Cannot run tests."
+if [ "${APP_READY}" = "true" ]; then
+  ok "Application is ready. Starting ZAP Baseline Scan..."
+  # Grant full permissions to REPORTS_DIR so the isolated Docker user 'zap' can write the file back
+  chmod 777 "${REPORTS_DIR}"
+  
+  # Use || true so the script doesn't abort early if vulnerabilities are found
+  docker run --rm --network=host \
+    -v "${REPORTS_DIR}:/zap/wrk/:rw" \
+    ghcr.io/zaproxy/zaproxy:stable zap-baseline.py \
+    -t http://localhost:3000 \
+    -x zap-report.xml || true
+  
+  if [ -f "${REPORTS_DIR}/zap-report.xml" ]; then
+    ZAP_SIZE=$(wc -c < "${REPORTS_DIR}/zap-report.xml")
+    if [ "${ZAP_SIZE}" -gt 100 ]; then
+      ok "ZAP Scan completed successfully (${ZAP_SIZE} bytes)."
+      ZAP_RESULT="completed"
+    else
+      warn "ZAP Scan completed but report is suspiciously small."
+      ZAP_RESULT="failed"
+    fi
   else
-    log "Installing dependencies via npm install..."
-    npm install --no-audit --no-fund --legacy-peer-deps > npm-install.log 2>&1 || warn "npm install warnings, proceeding anyway..."
-
-    # ── PHASE A: Unit Tests ────────────────────────────────────────────────
-    # Detect by file: any *.test.js / *.spec.js / *.test.ts / *.spec.ts in tests/
-    UNIT_FILES=$(find tests/ -name "*.test.js" -o -name "*.spec.js" \
-                             -o -name "*.test.ts" -o -name "*.spec.ts" \
-                             -o -name "*.test.mjs" -o -name "*.spec.mjs" \
-                             2>/dev/null | head -5)
-
-    if [ -z "${UNIT_FILES}" ]; then
-      echo ""
-      echo "======================================================="
-      echo "      NO UNIT TEST FILES FOUND IN tests/ FOLDER        "
-      echo "         SKIPPING UNIT TESTS                           "
-      echo "======================================================="
-      echo ""
-    else
-      log "Unit test files found:"
-      echo "${UNIT_FILES}"
-
-      # Pick best test command
-      if grep -q '"test:smoke":' package.json; then
-        SMOKE_CMD="npm run test:smoke"
-      elif grep -q '"test":' package.json; then
-        SMOKE_CMD="npm test"
-      else
-        SMOKE_CMD="npx jest --passWithNoTests"
-      fi
-
-      log "Running unit tests: ${SMOKE_CMD}"
-      if ${SMOKE_CMD}; then
-        ok "Unit tests passed!"
-      else
-        echo ""
-        echo "======================================================="
-        echo "    UNIT TESTS FAILED — PIPELINE CONTINUES             "
-        echo "    Review the test output above for failure details   "
-        echo "======================================================="
-        echo ""
-        warn "Unit tests failed — logged as warning. Pipeline continues."
-      fi
-    fi
-
-    # ── PHASE B: Newman / API Tests ────────────────────────────────────────
-    # Detect by searching the ENTIRE project root for Postman collection files
-    # (tests/ folder is for unit tests only)
-    NEWMAN_CMD=""
-    NEWMAN_REASON=""
-
-    COLLECTION_FILE=$(find . \
-      -not -path "*/node_modules/*" \
-      -not -path "*/.git/*" \
-      \( -name "*.postman_collection.json" -o -name "*.collection.json" \) \
-      2>/dev/null | head -1)
-
-    if [ -n "${COLLECTION_FILE}" ]; then
-      NEWMAN_REASON="${COLLECTION_FILE}"
-      if grep -q '"test:newman":' package.json; then
-        NEWMAN_CMD="npm run test:newman"
-      else
-        NEWMAN_CMD="npx newman run ${COLLECTION_FILE} --reporters cli,htmlextra --reporter-htmlextra-export ${REPORTS_DIR}/newman-report.html --bail"
-      fi
-    elif [ -f "tests/run-newman-cloud.mjs" ]; then
-      NEWMAN_REASON="tests/run-newman-cloud.mjs"
-      if grep -q '"test:newman":' package.json; then
-        NEWMAN_CMD="npm run test:newman"
-      else
-        NEWMAN_CMD="node tests/run-newman-cloud.mjs"
-      fi
-    fi
-
-    if [ -z "${NEWMAN_CMD}" ]; then
-      echo ""
-      echo "======================================================="
-      echo "    NO NEWMAN/API TEST FILES FOUND IN tests/ FOLDER    "
-      echo "         SKIPPING NEWMAN/API TESTS                     "
-      echo "======================================================="
-      echo ""
-    else
-      log "Newman test file found: ${NEWMAN_REASON}"
-      log "Starting application server for API tests..."
-      SERVER_PID=""
-      SERVER_CRASHED=false
-
-      # Detect start command
-      if grep -q '"start":' package.json; then
-        START_CMD="npm start"
-      elif grep -q '"serve":' package.json; then
-        START_CMD="npm run serve"
-      else
-        START_CMD="node src/server.js"
-        warn "No 'start' in package.json — falling back to: ${START_CMD}"
-      fi
-
-      log "Starting: ${START_CMD}"
-      ${START_CMD} > "${REPORTS_DIR}/server.log" 2>&1 &
-      SERVER_PID=$!
-      log "Server PID: ${SERVER_PID}"
-
-      # Wait up to 30s for server on port 3000
-      SERVER_READY=false
-      for attempt in $(seq 1 15); do
-        if curl -s --connect-timeout 2 --max-time 3 "http://localhost:3000" > /dev/null 2>&1 || \
-           curl -s --connect-timeout 2 --max-time 3 "http://localhost:3000/health" > /dev/null 2>&1; then
-          ok "Server ready (attempt ${attempt}/15)"
-          SERVER_READY=true
-          break
-        fi
-        log "  Waiting for server... (${attempt}/15)"
-        sleep 2
-      done
-
-      # Print server diagnostics
-      log "Port 3000 check:"
-      ss -tlnp 2>/dev/null | grep ':3000' || netstat -tlnp 2>/dev/null | grep ':3000' || log "  (nothing on port 3000)"
-      log "--- Server Log ---"
-      cat "${REPORTS_DIR}/server.log" 2>/dev/null || true
-      log "--- End Server Log ---"
-
-      # Check if server process is alive
-      if [ -n "${SERVER_PID}" ] && ! kill -0 "${SERVER_PID}" 2>/dev/null; then
-        SERVER_CRASHED=true
-        SERVER_PID=""
-      fi
-
-      if [ "${SERVER_CRASHED}" = "true" ] || [ "${SERVER_READY}" = "false" ]; then
-        echo ""
-        echo "======================================================="
-        echo "   SERVER CRASHED / NOT READY — NEWMAN TESTS SKIPPED   "
-        echo "   FIX YOUR SERVER (see log above) AND PUSH AGAIN      "
-        echo "======================================================="
-        echo ""
-        warn "Newman tests SKIPPED due to server failure. Pipeline continues."
-      else
-        log "Running Newman/API tests: ${NEWMAN_CMD}"
-        if ${NEWMAN_CMD}; then
-          ok "Newman/API tests passed!"
-        else
-          echo ""
-          echo "======================================================="
-          echo "    NEWMAN/API TESTS FAILED — PIPELINE CONTINUES       "
-          echo "    Review the Newman output above for failure details  "
-          echo "======================================================="
-          echo ""
-          warn "Newman tests failed — logged as warning. Pipeline continues."
-        fi
-      fi
-
-      # Shut down server
-      if [ -n "${SERVER_PID}" ]; then
-        log "Stopping server (PID ${SERVER_PID})..."
-        kill "${SERVER_PID}" 2>/dev/null || true
-        wait "${SERVER_PID}" 2>/dev/null || true
-        ok "Server stopped."
-      fi
-    fi
+    warn "ZAP Scan failed to produce a report."
+    ZAP_RESULT="failed"
   fi
 else
-  warn "SonarQube Quality Gate did not pass (or scan failed). Skipping all tests."
+  warn "Application failed to start. Skipping ZAP DAST scan."
+  ZAP_RESULT="skipped"
 fi
 
+log "Shutting down the backend application..."
+kill ${APP_PID} 2>/dev/null || true
+cd "${WORKSPACE}"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — Import to DefectDojo
+# STEP 3 — Import to DefectDojo
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 2: Importing to DefectDojo"
+log "STEP 3: Importing to DefectDojo"
 log "-------------------------------------------------------"
 
 do_import() {
@@ -480,6 +374,11 @@ do_import \
   "SonarQube Scan" \
   "SonarQube" || true
 
+do_import \
+  "${REPORTS_DIR}/zap-report.xml" \
+  "ZAP Scan" \
+  "OWASP ZAP" || true
+
 if [ "${IMPORT_COUNT}" -eq 0 ]; then
   warn "DefectDojo import failed — pipeline will continue and bundle raw reports"
   warn "Check:"
@@ -488,15 +387,15 @@ if [ "${IMPORT_COUNT}" -eq 0 ]; then
   warn "  3. DEFECTDOJO_URL — e.g. http://your-host:8080"
   DOJO_IMPORT_FAILED=true
 else
-  ok "${IMPORT_COUNT}/1 reports imported to DefectDojo"
+  ok "${IMPORT_COUNT} reports imported to DefectDojo"
   DOJO_IMPORT_FAILED=false
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — Generate final report from DefectDojo (or bundle raw reports)
+# STEP 4 — Generate final report from DefectDojo (or bundle raw reports)
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 3: Generating final report"
+log "STEP 4: Generating final report"
 log "-------------------------------------------------------"
 
 if [ "${DOJO_IMPORT_FAILED}" = "true" ]; then
@@ -514,7 +413,8 @@ if [ "${DOJO_IMPORT_FAILED}" = "true" ]; then
     "defectdojo_import": "failed",
     "note": "DefectDojo import failed. Raw reports are included in this artifact.",
     "raw_reports": {
-      "sonarqube_report_bytes": ${SONAR_SIZE}
+      "sonarqube_report_bytes": ${SONAR_SIZE},
+      "zap_report_bytes": $(wc -c < "${REPORTS_DIR}/zap-report.xml" 2>/dev/null || echo 0)
     }
   }
 }
@@ -556,7 +456,7 @@ EOF
 fi
 
 log "-------------------------------------------------------"
-log "STEP 4: Generating HTML Report"
+log "STEP 5: Generating HTML Report"
 log "-------------------------------------------------------"
 if command -v node &>/dev/null; then
   if [ -f "${WORKSPACE}/scripts/generate-html.js" ] && [ -f "${REPORTS_DIR}/final-report.json" ]; then
@@ -585,14 +485,17 @@ log "======================================================="
 log " SCAN COMPLETE"
 log " SHA: ${GIT_SHA:0:8}  Branch: ${GIT_BRANCH}"
 log "-------------------------------------------------------"
-log " SonarQube SAST:     ${SONAR_RESULT}"
-log " DefectDojo imports: ${IMPORT_COUNT}/1"
+log " SonarQube SAST:     ${SONAR_RESULT:-skipped}"
+log " OWASP ZAP DAST:     ${ZAP_RESULT:-skipped}"
+log " DefectDojo imports: ${IMPORT_COUNT}"
 log " Report format:      ${FINAL_FORMAT}"
 log " Report:             ${REPORTS_DIR}/final-report.${FINAL_FORMAT}"
 log "======================================================="
 ok "Done. Report will be uploaded as GitHub artifact."
 
-if [ "${SONAR_QG_FAILED}" = "true" ]; then
-  fail "Failing pipeline: SonarQube Quality Gate checks did not pass."
+if [ "${QG_FAILED:-false}" = "true" ]; then
+  log ""
+  fail "TERMINAL ERROR: SonarQube Quality Gate Failed"
+  fail "The pipeline is blocked from passing because security/quality conditions were not met."
   exit 1
 fi
