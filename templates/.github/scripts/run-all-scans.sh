@@ -15,6 +15,9 @@ LOG_FILE="${REPORTS_DIR}/scan.log"
 
 # ── State ────────────────────────────────────────────────────────────────────
 SONAR_RESULT="skipped"
+UNIT_RESULT="skipped"
+NEWMAN_RESULT="skipped"
+ZAP_RESULT="skipped"
 IMPORT_COUNT=0
 FINAL_FORMAT="none"
 DOJO_IMPORT_FAILED=false
@@ -27,6 +30,15 @@ log()  { echo "[$(date '+%H:%M:%S')] $*"; }
 ok()   { echo "[$(date '+%H:%M:%S')] ✓ $*"; }
 warn() { echo "[$(date '+%H:%M:%S')] ⚠ WARNING: $*"; }
 fail() { echo "[$(date '+%H:%M:%S')] ✗ ERROR: $*"; }
+banner_fail() {
+  echo ""
+  echo "################################################################"
+  echo "#                                                              #"
+  echo "#   ✗ ERROR: $1 FAILED   #"
+  echo "#                                                              #"
+  echo "################################################################"
+  echo ""
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # BANNER + VALIDATION
@@ -267,7 +279,7 @@ if [ "${SONAR_REACHABLE}" = "true" ]; then
       SONAR_RESULT="partial"
     fi
   else
-    warn "SonarQube scan failed"
+    banner_fail "SONARQUBE SCAN"
     SONAR_RESULT="failed"
   fi
 else
@@ -275,10 +287,24 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — OWASP ZAP DAST Scan
+# STEP 2 — Unit Testing
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 2: OWASP ZAP DAST Scan"
+log "STEP 2: Unit Testing"
+log "-------------------------------------------------------"
+if npm test; then
+  ok "Unit tests passed"
+  UNIT_RESULT="passed"
+else
+  banner_fail "UNIT TESTS"
+  UNIT_RESULT="failed"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STEP 3 — API Integration Testing (Newman)
+# ─────────────────────────────────────────────────────────────────────────────
+log "-------------------------------------------------------"
+log "STEP 3: API Integration Testing (Newman)"
 log "-------------------------------------------------------"
 log "Starting the backend application on port 3000..."
 cd "${APP_DIR}"
@@ -297,7 +323,27 @@ for i in $(seq 1 15); do
 done
 
 if [ "${APP_READY}" = "true" ]; then
-  ok "Application is ready. Starting ZAP Baseline Scan..."
+  ok "Application is ready. Running Newman tests..."
+  if [ -n "${POSTMAN_API_KEY:-}" ] && [ -n "${COLLECTION_UID:-}" ]; then
+    if npm run test:newman; then
+      ok "Newman tests passed"
+      NEWMAN_RESULT="passed"
+    else
+      banner_fail "NEWMAN API TESTS"
+      NEWMAN_RESULT="failed"
+    fi
+  else
+    warn "Missing POSTMAN_API_KEY or COLLECTION_UID — skipping Newman"
+    NEWMAN_RESULT="skipped (missing keys)"
+  fi
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # STEP 4 — OWASP ZAP DAST Scan
+  # ─────────────────────────────────────────────────────────────────────────────
+  log "-------------------------------------------------------"
+  log "STEP 4: OWASP ZAP DAST Scan"
+  log "-------------------------------------------------------"
+  ok "Starting ZAP Baseline Scan..."
   # Grant full permissions to REPORTS_DIR so the isolated Docker user 'zap' can write the file back
   chmod 777 "${REPORTS_DIR}"
   
@@ -322,7 +368,8 @@ if [ "${APP_READY}" = "true" ]; then
     ZAP_RESULT="failed"
   fi
 else
-  warn "Application failed to start. Skipping ZAP DAST scan."
+  warn "Application failed to start. Skipping Newman and ZAP scans."
+  NEWMAN_RESULT="failed (app not ready)"
   ZAP_RESULT="skipped"
 fi
 
@@ -331,10 +378,10 @@ kill ${APP_PID} 2>/dev/null || true
 cd "${WORKSPACE}"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — Import to DefectDojo
+# STEP 5 — Import to DefectDojo
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 3: Importing to DefectDojo"
+log "STEP 5: Importing to DefectDojo"
 log "-------------------------------------------------------"
 
 do_import() {
@@ -392,10 +439,10 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 4 — Generate final report from DefectDojo (or bundle raw reports)
+# STEP 6 — Generate final report from DefectDojo (or bundle raw reports)
 # ─────────────────────────────────────────────────────────────────────────────
 log "-------------------------------------------------------"
-log "STEP 4: Generating final report"
+log "STEP 6: Generating final report"
 log "-------------------------------------------------------"
 
 if [ "${DOJO_IMPORT_FAILED}" = "true" ]; then
@@ -410,6 +457,9 @@ if [ "${DOJO_IMPORT_FAILED}" = "true" ]; then
     "branch": "${GIT_BRANCH}",
     "date": "${RUN_DATE}",
     "sonarqube_result": "${SONAR_RESULT}",
+    "unit_tests_result": "${UNIT_RESULT}",
+    "newman_tests_result": "${NEWMAN_RESULT}",
+    "zap_result": "${ZAP_RESULT}",
     "defectdojo_import": "failed",
     "note": "DefectDojo import failed. Raw reports are included in this artifact.",
     "raw_reports": {
@@ -435,6 +485,24 @@ else
 
   if [ "${HTTP}" = "200" ] && [ "${SIZE}" -gt 10 ]; then
     ok "DefectDojo findings report generated (${SIZE} bytes)"
+    
+    # Merge scan_summary into the fetched findings so HTML report shows both
+    if command -v jq &>/dev/null; then
+      log "Merging pipeline summary into findings..."
+      TEMP_JSON="${REPORTS_DIR}/temp-findings.json"
+      cp "${REPORTS_DIR}/final-report.json" "${TEMP_JSON}"
+      jq --arg sha "${GIT_SHA:0:8}" \
+         --arg branch "${GIT_BRANCH}" \
+         --arg date "${RUN_DATE}" \
+         --arg sonar "${SONAR_RESULT}" \
+         --arg unit "${UNIT_RESULT}" \
+         --arg newman "${NEWMAN_RESULT}" \
+         --arg zap "${ZAP_RESULT}" \
+         '. + {scan_summary: {sha: $sha, branch: $branch, date: $date, sonarqube_result: $sonar, unit_tests_result: $unit, newman_tests_result: $newman, zap_result: $zap}}' \
+         "${TEMP_JSON}" > "${REPORTS_DIR}/final-report.json"
+      rm "${TEMP_JSON}"
+    fi
+
     FINAL_FORMAT="json"
   else
     warn "DefectDojo report fetch failed (HTTP ${HTTP}, ${SIZE} bytes) — falling back to raw bundle"
@@ -445,6 +513,9 @@ else
     "branch": "${GIT_BRANCH}",
     "date": "${RUN_DATE}",
     "sonarqube_result": "${SONAR_RESULT}",
+    "unit_tests_result": "${UNIT_RESULT}",
+    "newman_tests_result": "${NEWMAN_RESULT}",
+    "zap_result": "${ZAP_RESULT}",
     "defectdojo_import": "imported_but_report_fetch_failed",
     "note": "Raw reports are included in this artifact."
   }
@@ -485,8 +556,10 @@ log "======================================================="
 log " SCAN COMPLETE"
 log " SHA: ${GIT_SHA:0:8}  Branch: ${GIT_BRANCH}"
 log "-------------------------------------------------------"
-log " SonarQube SAST:     ${SONAR_RESULT:-skipped}"
-log " OWASP ZAP DAST:     ${ZAP_RESULT:-skipped}"
+log " SonarQube SAST:      ${SONAR_RESULT:-skipped}"
+log " Unit Tests:         ${UNIT_RESULT}"
+log " Newman API Tests:   ${NEWMAN_RESULT}"
+log " OWASP ZAP DAST:      ${ZAP_RESULT}"
 log " DefectDojo imports: ${IMPORT_COUNT}"
 log " Report format:      ${FINAL_FORMAT}"
 log " Report:             ${REPORTS_DIR}/final-report.${FINAL_FORMAT}"
