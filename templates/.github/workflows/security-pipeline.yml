@@ -87,8 +87,6 @@ jobs:
           DEFECTDOJO_API_KEY:       ${{ secrets.DEFECTDOJO_API_KEY }}
           DEFECTDOJO_ENGAGEMENT_ID: ${{ secrets.DEFECTDOJO_ENGAGEMENT_ID }}
           DEFECTDOJO_PRODUCT_ID:    ${{ secrets.DEFECTDOJO_PRODUCT_ID }}
-          POSTMAN_API_KEY:          ${{ secrets.POSTMAN_API_KEY }}
-          COLLECTION_UID:           ${{ secrets.COLLECTION_UID }}
         run: |
           export PATH="/usr/local/bin:/usr/bin:$PATH"
           bash ~/security-scan/scripts/run-all-scans.sh
@@ -101,7 +99,7 @@ jobs:
         with:
           name: raw-scan-reports-${{ needs.prepare.outputs.short_sha }}
           path: ~/security-scan/reports/
-          retention-days: 90
+          retention-days: 7
           if-no-files-found: warn
 
   # ── JOB 3: UPLOAD ARTIFACT ──────────────────────────────────────────────────
@@ -147,7 +145,7 @@ jobs:
         with:
           name: ${{ needs.prepare.outputs.report_name }}
           path: ~/security-scan/reports/
-          retention-days: 90
+          retention-days: 30
           if-no-files-found: warn
 
       - name: Write job summary
