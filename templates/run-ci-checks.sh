@@ -82,9 +82,19 @@ echo "=================================================="
 
 HAS_SMOKE=$(node -e "try{const p=require('./package.json');console.log(p.scripts&&p.scripts['test:smoke']?'yes':'no')}catch(e){console.log('no')}" 2>/dev/null)
 
-TEST_FILES=$(find . -not -path "*/node_modules/*" -not -path "*/.git/*" \( -name "*.test.js" -o -name "*.spec.js" -o -name "*.test.ts" -o -name "*.spec.ts" \) 2>/dev/null)
+# Detect test files: *.test.js / *.spec.js patterns, OR any .js/.ts inside __tests__ / __test__ dirs
+TEST_FILES=$(find . \
+  -not -path "*/node_modules/*" -not -path "*/.git/*" \
+  \( \
+    -name "*.test.js" -o -name "*.spec.js" -o \
+    -name "*.test.ts" -o -name "*.spec.ts" -o \
+    -name "*.test.tsx" -o -name "*.spec.tsx" -o \
+    -name "*.test.jsx" -o -name "*.spec.jsx" -o \
+    -name "*.test.mjs" -o -name "*.spec.mjs" -o \
+    \( \( -path "*/__tests__/*" -o -path "*/__test__/*" \) \( -name "*.js" -o -name "*.ts" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.mjs" \) \) \
+  \) 2>/dev/null)
 
-if [ "$HAS_SMOKE" = "yes" ] && [ -n "$TEST_FILES" ]; then
+if [ "$HAS_SMOKE" = "yes" ]; then
   echo "[Smoke Tests] Running 'test:smoke' script..."
   if ! npm run test:smoke; then
     # Check if failure was due to missing vitest coverage dependency
@@ -99,14 +109,18 @@ if [ "$HAS_SMOKE" = "yes" ] && [ -n "$TEST_FILES" ]; then
   fi
 
   echo "✅ [Smoke Tests] Passed ✔"
+elif [ -n "$TEST_FILES" ]; then
+  echo ""
+  echo "⚠️  ============================================================"
+  echo "⚠️  [Smoke Tests] WARNING: Test files found but no 'test:smoke' script in package.json."
+  echo "⚠️  Run 'npx cs-setup check-hooks' to auto-add it."
+  echo "⚠️  SKIPPING smoke tests — push will continue."
+  echo "⚠️  ============================================================"
+  echo ""
 else
   echo ""
   echo "⚠️  ============================================================"
-  if [ "$HAS_SMOKE" != "yes" ]; then
-    echo "⚠️  [Smoke Tests] WARNING: No 'test:smoke' script found in package.json."
-  else
-    echo "⚠️  [Smoke Tests] WARNING: No test files found (*.test.js / *.spec.js)."
-  fi
+  echo "⚠️  [Smoke Tests] WARNING: No 'test:smoke' script and no test files found."
   echo "⚠️  SKIPPING smoke tests — push will continue."
   echo "⚠️  ============================================================"
   echo ""
