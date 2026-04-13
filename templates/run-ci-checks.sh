@@ -159,15 +159,20 @@ else
   if [ "$HAS_START" = "yes" ]; then START_CMD="npm start"; elif [ "$HAS_DEV" = "yes" ]; then START_CMD="npm run dev"; fi
 
   if [ -n "$START_CMD" ]; then
-    echo "[Server] Starting server with: $START_CMD"
-    sh -c "$START_CMD" </dev/null > /tmp/ci-server.log 2>&1 &
-    SERVER_PID=$!
-
     # Port Detection
     DETECTED_PORT=""
     if [ -f ".env" ]; then DETECTED_PORT=$(grep -E "^PORT=" .env 2>/dev/null | cut -d= -f2 | tr -d "\t\r\n "); fi
     if [ -z "$DETECTED_PORT" ]; then DETECTED_PORT=$(node -e 'try{const p=require("./package.json");const s=JSON.stringify(p.scripts||{});const m=s.match(/PORT=([0-9]+)/);if(m)process.stdout.write(m[1])}catch(e){}' 2>/dev/null); fi
     if [ -z "$DETECTED_PORT" ]; then DETECTED_PORT=$(grep -rE "\.listen\([0-9]" --include="*.js" --include="*.ts" --exclude-dir=node_modules --exclude-dir=.git . 2>/dev/null | grep -oE "[0-9]{4,5}" | head -1); fi
+    
+    KILL_PORT=${DETECTED_PORT:-3000}
+    echo "[Server] Auto-killing any process on port $KILL_PORT to avoid conflicts..."
+    npx --yes kill-port $KILL_PORT >/dev/null 2>&1 || true
+
+    echo "[Server] Starting server with: $START_CMD"
+    sh -c "$START_CMD" </dev/null > /tmp/ci-server.log 2>&1 &
+    SERVER_PID=$!
+
     PORT_LIST="$DETECTED_PORT 3000 3001 4000 8000 8080"
 
     echo "[Server] Waiting for server to be ready..."
