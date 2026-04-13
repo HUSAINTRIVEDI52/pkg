@@ -167,10 +167,19 @@ else
     
     KILL_PORT=${DETECTED_PORT:-3000}
     echo "[Server] Auto-killing any process on port $KILL_PORT to avoid conflicts..."
+    # Use Node to kill the port (cross-platform, no extra deps needed)
+    node -e "
+      const net = require('net');
+      const s = net.createConnection({port:$KILL_PORT, host:'127.0.0.1'});
+      s.on('connect', () => { s.destroy(); process.exit(0); });
+      s.on('error', () => { process.exit(0); });
+      setTimeout(() => process.exit(0), 2000);
+    " 2>/dev/null || true
+    # Also try npx kill-port as a best-effort
     npx --yes kill-port $KILL_PORT >/dev/null 2>&1 || true
 
     echo "[Server] Starting server with: $START_CMD"
-    sh -c "$START_CMD" </dev/null > /tmp/ci-server.log 2>&1 &
+    $START_CMD </dev/null > /tmp/ci-server.log 2>&1 &
     SERVER_PID=$!
 
     PORT_LIST="$DETECTED_PORT 3000 3001 4000 8000 8080"
@@ -178,15 +187,23 @@ else
     echo "[Server] Waiting for server to be ready..."
     SERVER_UP=0
     for i in $(seq 1 30); do
+      # Check if the server process is still alive
       if ! kill -0 $SERVER_PID 2>/dev/null; then
         echo "✖ [Server] Process exited early. Showing logs below:"
         echo "--------------------------------------------------"
-        cat /tmp/ci-server.log # <--- This shows you the ACTUAL error
+        cat /tmp/ci-server.log 2>/dev/null || echo "(no log file)"
         echo "--------------------------------------------------"
-        exit 1 # Block push because server crashed
+        exit 1
       fi
+      # Use Node.js TCP probe instead of curl (works on Windows + Linux)
       for PORT_TRY in $PORT_LIST; do
-        if curl -sf --connect-timeout 1 --max-time 1 http://127.0.0.1:$PORT_TRY >/dev/null 2>&1 || curl -sf --connect-timeout 1 --max-time 1 http://[::1]:$PORT_TRY >/dev/null 2>&1; then
+        if node -e "
+          const net = require('net');
+          const s = net.createConnection({port:$PORT_TRY, host:'127.0.0.1'});
+          s.on('connect', () => { s.destroy(); process.exit(0); });
+          s.on('error', () => { process.exit(1); });
+          setTimeout(() => process.exit(1), 1000);
+        " 2>/dev/null; then
           PORT=$PORT_TRY
           SERVER_UP=1
           echo "✅ [Server] Running on port $PORT"
@@ -198,6 +215,8 @@ else
 
     if [ $SERVER_UP -eq 0 ]; then
       echo "⚠️  [Server] Did not start within 30s — Newman tests might fail."
+      echo "    Server logs:"
+      cat /tmp/ci-server.log 2>/dev/null || echo "    (no log file)"
     fi
   fi
 
