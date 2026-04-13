@@ -13,6 +13,7 @@ const path = require('path');
 const { execSync, spawnSync } = require('child_process');
 
 const PKG_DIR = path.resolve(__dirname, '..');          // our package root
+<<<<<<< HEAD
 let hasDependencies = false;
 try {
   require.resolve('fs-extra/package.json');
@@ -36,13 +37,26 @@ if (!hasDependencies) {
     : ['install', '--ignore-scripts', '--legacy-peer-deps'];
 
   const result = spawnSync(manager, installArgs, {
+=======
+const OWN_NODE_MODULES = path.join(PKG_DIR, 'node_modules');
+const SENTINEL = path.join(OWN_NODE_MODULES, 'fs-extra', 'package.json');
+
+if (!fs.existsSync(SENTINEL)) {
+  console.log('[cs-setup] Installing own dependencies first...');
+  const result = spawnSync('npm', ['install', '--ignore-scripts'], {
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
     cwd: PKG_DIR,
     stdio: 'inherit',
     shell: process.platform === 'win32',
   });
   if (result.status !== 0) {
+<<<<<<< HEAD
     console.error(`[cs-setup] Failed to install own dependencies via ${manager}. Please run:`);
     console.error(`  cd ${PKG_DIR} && ${manager} install`);
+=======
+    console.error('[cs-setup] Failed to install own dependencies. Please run:');
+    console.error(`  cd ${PKG_DIR} && npm install`);
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
     process.exit(0);
   }
   console.log('[cs-setup] Own dependencies installed.');
@@ -136,6 +150,7 @@ if (isPostInstall) {
 // ─────────────────────────────────────────────────────────────────────────────
 (async () => {
   try {
+<<<<<<< HEAD
     if (command === 'install') {
       const source = process.argv[3] || 'github:Creolestudios/DevOps-standards';
       const { detectPackageManager, getHttpsUrl, whitelistInPnpm } = require('../lib/packageManager');
@@ -168,6 +183,13 @@ if (isPostInstall) {
 
       logInfo('[install] Proceeding with project initialization...');
       // Fall through to init logic below
+=======
+    const targetTool = process.argv[3]; // e.g. 'gitleaks'
+
+    if (command === 'install' && targetTool === 'gitleaks') {
+      await installGitleaks(gitRoot);
+      process.exit(0);
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
     }
 
     const { found, gitRoot, projectRoot } = await isGitRepo();
@@ -187,8 +209,12 @@ if (isPostInstall) {
 
       // Ensure tools are installed
       const { installSonarScanner } = require('../lib/sonarqube');
+<<<<<<< HEAD
       const { whitelistInPnpm, installAllRequiredDependencies } = require('../lib/packageManager');
       await whitelistInPnpm();
+=======
+      const { installAllRequiredDependencies } = require('../lib/packageManager');
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
       await installSonarScanner();
       await installAllRequiredDependencies();
 
@@ -222,8 +248,12 @@ if (isPostInstall) {
       logInfo('Monorepo detected — hooks at git root, config files at project root.');
     }
 
+<<<<<<< HEAD
     const { whitelistInPnpm, installAllRequiredDependencies } = require('../lib/packageManager');
     await whitelistInPnpm();
+=======
+    const { installAllRequiredDependencies } = require('../lib/packageManager');
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
     await installHusky(gitRoot);
     await installGitleaks(gitRoot);
     await installSonarScanner();

@@ -22,25 +22,34 @@ Whenever you run `git push`, a compulsory local CI pipeline runs:
 
 ## 📦 Installation
 
+<<<<<<< HEAD
 To strictly use `pnpm i` (or any other package manager) and bypass pnpm 10's strict security firewalls without any extra commands, you **must** copy and paste the following snippet into your project's `package.json`.
 
 1. Open your `package.json`.
 2. Add the dependency using the **HTTPS URL** (to avoid SSH permission errors).
 3. Add the **pnpm configuration block** (to allow the package to setup the `.github` folders automatically).
+=======
+To install and initialize the setup in your project, add it as a `devDependency`:
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
 
 ```json
 {
   "devDependencies": {
+<<<<<<< HEAD
     "cs-setup": "git+https://github.com/Creolestudios/DevOps-standards.git"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "cs-setup"
     ]
+=======
+    "cs-setup": "github:HUSAINTRIVEDI52/pkg#m-main"
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
   }
 }
 ```
 
+<<<<<<< HEAD
 Once the above is in your `package.json`, simply type:
 
 ```bash
@@ -49,6 +58,13 @@ pnpm i
 
 *(This also works perfectly for `npm i` or `yarn` without any modifications.)*
 
+=======
+Then, run:
+```bash
+npm install
+```
+
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
 ---
 
 ## 🔄 Updating to Latest Version

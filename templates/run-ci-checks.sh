@@ -65,6 +65,7 @@ echo "[CI Checks] Node project detected in: $PROJECT_DIR"
 cd "$PROJECT_DIR" || exit 0
 
 # ---------------------------------------------------------------
+<<<<<<< HEAD
 # Detect Package Manager
 # ---------------------------------------------------------------
 PKG_MANAGER="npm"
@@ -82,6 +83,8 @@ if [ "$PKG_MANAGER" = "bun" ]; then INSTALL_CMD="bun add -d"; fi
 echo "[CI Checks] Using package manager: $PKG_MANAGER"
 
 # ---------------------------------------------------------------
+=======
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
 # Detect scripts dynamically
 # ---------------------------------------------------------------
 
@@ -111,6 +114,7 @@ TEST_FILES=$(find . \
     \( \( -path "*/__tests__/*" -o -path "*/__test__/*" \) \( -name "*.js" -o -name "*.ts" -o -name "*.tsx" -o -name "*.jsx" -o -name "*.mjs" \) \) \
   \) 2>/dev/null)
 
+<<<<<<< HEAD
 if [ "$HAS_SMOKE" = "yes" ] && [ -n "$TEST_FILES" ]; then
   echo "[Smoke Tests] Test script and test files detected. Running 'test:smoke'..."
   SMOKE_OUTPUT=$($RUN_CMD test:smoke 2>&1)
@@ -160,6 +164,23 @@ if [ "$HAS_SMOKE" = "yes" ] && [ -n "$TEST_FILES" ]; then
     echo "$SMOKE_OUTPUT"
     echo "✅ [Smoke Tests] Passed ✔"
   fi
+=======
+if [ "$HAS_SMOKE" = "yes" ]; then
+  echo "[Smoke Tests] Running 'test:smoke' script..."
+  if ! npm run test:smoke; then
+    # Check if failure was due to missing vitest coverage dependency
+    if npm run test:smoke 2>&1 | grep -q "@vitest/coverage-v8"; then
+      echo ""
+      echo "❌ [Smoke Tests] ERROR: Missing '@vitest/coverage-v8' dependency."
+      echo "💡 [Smoke Tests] TIP: Run 'npx cs-setup check-hooks' to automatically install it."
+      echo ""
+    fi
+    echo "✖ [Smoke Tests] Failed. Push blocked."
+    exit 1
+  fi
+
+  echo "✅ [Smoke Tests] Passed ✔"
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
 elif [ -n "$TEST_FILES" ]; then
   echo ""
   echo "⚠️  ============================================================"
@@ -207,11 +228,15 @@ else
   SERVER_PID=""
   PORT=""
   START_CMD=""
+<<<<<<< HEAD
   if [ "$HAS_START" = "yes" ]; then 
     START_CMD="$PKG_MANAGER start"
   elif [ "$HAS_DEV" = "yes" ]; then 
     START_CMD="$RUN_CMD dev"
   fi
+=======
+  if [ "$HAS_START" = "yes" ]; then START_CMD="npm start"; elif [ "$HAS_DEV" = "yes" ]; then START_CMD="npm run dev"; fi
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
 
   if [ -n "$START_CMD" ]; then
     # Port Detection
@@ -280,7 +305,11 @@ else
 
   if [ "$HAS_NEWMAN_SCRIPT" = "yes" ]; then
     echo "[Newman] Running standardized 'test:newman' script..."
+<<<<<<< HEAD
     if ! $RUN_CMD test:newman; then
+=======
+    if ! npm run test:newman; then
+>>>>>>> 5a9b41b61a0ab34f079eca1241b7405eceb0dda3
       if [ -n "$SERVER_PID" ]; then kill $SERVER_PID 2>/dev/null; fi
       echo "✖ [Newman] API tests failed. Push blocked."
       exit 1
