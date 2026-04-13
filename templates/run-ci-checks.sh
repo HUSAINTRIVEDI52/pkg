@@ -181,7 +181,7 @@ else
         exit 1 # Block push because server crashed
       fi
       for PORT_TRY in $PORT_LIST; do
-        if curl -sf --connect-timeout 2 --max-time 2 http://localhost:$PORT_TRY >/dev/null 2>&1; then
+        if curl -sf --connect-timeout 1 --max-time 1 http://127.0.0.1:$PORT_TRY >/dev/null 2>&1 || curl -sf --connect-timeout 1 --max-time 1 http://[::1]:$PORT_TRY >/dev/null 2>&1; then
           PORT=$PORT_TRY
           SERVER_UP=1
           echo "✅ [Server] Running on port $PORT"
