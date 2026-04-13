@@ -146,7 +146,7 @@ else
 
   if [ -n "$START_CMD" ]; then
     echo "[Server] Starting server with: $START_CMD"
-    sh -c "$START_CMD" > /tmp/ci-server.log 2>&1 &
+    sh -c "$START_CMD" </dev/null > /tmp/ci-server.log 2>&1 &
     SERVER_PID=$!
 
     # Port Detection
@@ -167,7 +167,7 @@ else
         exit 1 # Block push because server crashed
       fi
       for PORT_TRY in $PORT_LIST; do
-        if curl -sf http://localhost:$PORT_TRY >/dev/null 2>&1; then
+        if curl -sf --connect-timeout 2 --max-time 2 http://localhost:$PORT_TRY >/dev/null 2>&1; then
           PORT=$PORT_TRY
           SERVER_UP=1
           echo "✅ [Server] Running on port $PORT"

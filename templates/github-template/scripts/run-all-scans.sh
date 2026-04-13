@@ -278,6 +278,10 @@ fi
 log "-------------------------------------------------------"
 log "STEP 2: Unit Testing"
 log "-------------------------------------------------------"
+cd "${APP_DIR}"
+log "Installing dependencies..."
+npm ci --silent > /dev/null 2>&1 || npm install --no-audit --no-fund --silent > /dev/null 2>&1 || true
+
 if npm test; then
   ok "Unit tests passed"
   UNIT_RESULT="passed"
@@ -294,14 +298,13 @@ log "STEP 3: API Integration Testing (Newman)"
 log "-------------------------------------------------------"
 log "Starting the backend application on port 3000..."
 cd "${APP_DIR}"
-npm ci --silent > /dev/null 2>&1 || true
 npm start > /dev/null 2>&1 &
 APP_PID=$!
 
 log "Waiting up to 30s for the application to be ready on http://localhost:3000..."
 APP_READY=false
 for i in $(seq 1 15); do
-  if curl -s http://localhost:3000 > /dev/null; then
+  if curl -s --connect-timeout 2 --max-time 3 http://localhost:3000 > /dev/null; then
     APP_READY=true
     break
   fi
